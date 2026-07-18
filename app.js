@@ -3,9 +3,46 @@
 // ==========================================================================
 
 // Global Configuration
-const APP_ID = "33Rch7JPS36kkSKC2iDDt"; // Your registered Deriv App Client ID
-const WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`;
+// --- 1. MODERN DERIV CONFIGURATION ---
+const CLIENT_ID = "33Rch7JPS36kkSKC2iDDt"; // Your registered alphanumeric Client ID
+const REDIRECT_URI = "https://martindev896.github.io/AlgoTrade/";
 
+// --- 2. THE MODERNISED AUTHENTICATION FUNCTION ---
+if (btnDerivLogin) {
+    btnDerivLogin.addEventListener('click', async () => {
+        // Generate a random string to protect against CSRF attacks
+        const state = Math.random().toString(36).substring(2, 15);
+        sessionStorage.setItem('oauth_state', state);
+
+        // The correct updated OAuth2 authorization endpoint format
+        const oauthUrl = `https://oauth.deriv.com/oauth2/authorize` + 
+                         `?response_type=code` + 
+                         `&client_id=${CLIENT_ID}` + 
+                         `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` + 
+                         `&state=${state}` + 
+                         `&scope=read+trade+accounts`; // The specific permissions your app needs
+
+        window.location.href = oauthUrl;
+    });
+}
+
+// --- 3. EXTRACTING TOKENS AFTER REDIRECT ---
+function checkAuthCallback() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code'); // Modern OAuth2 returns an authorization code
+    
+    if (code) {
+        console.log("Authorization code received successfully:", code);
+        // Clear the URL parameters so they don't sit in the address bar
+        window.history.replaceState({}, document.title, window.location.pathname);
+        
+        // Next, your app exchanges this 'code' for a short-lived access token via a POST request
+        exchangeCodeForToken(code);
+    }
+}
+
+// Run the callback check on page load
+window.addEventListener('DOMContentLoaded', checkAuthCallback);
 // Core Trading State Machine
 let ws = null;
 let isAuthorized = false;
