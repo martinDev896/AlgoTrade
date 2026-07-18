@@ -127,8 +127,8 @@ function requestMarketTicks(symbol) {
 
 if (btnDerivLogin) {
     btnDerivLogin.addEventListener('click', () => {
-        // Explicitly passing formatting and platform scopes to force the authorization dialog
-        const oauthUrl = `https://oauth.deriv.com/oauth2/authorize?app_id=${APP_ID}&l=en&brand=deriv&scope=admin+store+read+trade+payments`;
+        // Clean, standard Deriv OAuth entry point
+        const oauthUrl = `https://oauth.deriv.com/oauth2/authorize?app_id=${APP_ID}`;
         window.location.href = oauthUrl;
     });
 }
