@@ -127,7 +127,7 @@ function requestMarketTicks(symbol) {
 
 if (btnDerivLogin) {
     btnDerivLogin.addEventListener('click', () => {
-        // Redirect user to official Deriv secure portal window
+        // Corrected official Deriv authentication gateway URL layout
         const oauthUrl = `https://oauth.deriv.com/oauth2/authorize?app_id=${APP_ID}&l=en&brand=deriv`;
         window.location.href = oauthUrl;
     });
