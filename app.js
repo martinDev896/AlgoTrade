@@ -4,9 +4,24 @@
 
 // Global Configuration
 // --- 1. MODERN DERIV CONFIGURATION ---
-const CLIENT_ID = "33Rch7JPS36kkSKC2iDDt"; // Your registered alphanumeric Client ID
-const REDIRECT_URI = "https://martindev896.github.io/AlgoTrade/";
+// --- 1. CONFIGURATION ---
+// Swap this with your actual NUMERIC App ID from developers.deriv.com
+const APP_ID = "33Rch7JPS36kkSKC2iDDt"; 
 
+// --- 2. THE WORKING ROUTING FUNCTION ---
+const btnDerivLogin = document.querySelector('button') || document.getElementById('btn-deriv-login');
+
+if (btnDerivLogin) {
+    btnDerivLogin.addEventListener('click', () => {
+        // We use the exact comma-separated scopes you found!
+        const oauthUrl = `https://oauth.deriv.com/oauth2/authorize?app_id=${APP_ID}&scope=trade,account_manage,read`;
+        
+        console.log("Redirecting to: ", oauthUrl);
+        window.location.href = oauthUrl;
+    });
+} else {
+    console.error("Could not find a button element on this page!");
+}
 // --- 2. THE MODERNISED AUTHENTICATION FUNCTION ---
 if (btnDerivLogin) {
     btnDerivLogin.addEventListener('click', async () => {
