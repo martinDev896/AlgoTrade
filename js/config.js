@@ -15,7 +15,7 @@ const DERIV_CONFIG = {
   // Your Cloudflare Worker URL that performs the code -> token exchange.
   // Deploy cloudflare-worker/token-exchange-worker.js first, then paste
   // the resulting workers.dev URL here.
-  TOKEN_EXCHANGE_URL: "REPLACE_WITH_YOUR_CLOUDFLARE_WORKER_URL",
+  TOKEN_EXCHANGE_URL: "https://raspy-brook-b74a.martinkimathi896.workers.dev/",
 
   // REST base for account management — do not change
   ACCOUNTS_API_BASE: "https://api.derivws.com/trading/v1/options",
