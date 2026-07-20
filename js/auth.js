@@ -1,25 +1,25 @@
 // ==========================================================
-// AlgoTrade — auth.js
-// Phase 1: Connect / Authorize flow only.
+// AlgoTrade — auth.js  (New Deriv API: OAuth2 Authorization Code + PKCE)
 //
 // Flow:
-//   1. User clicks "Connect to Deriv" -> redirected to Deriv's OAuth page.
-//   2. Deriv redirects back to REDIRECT_URI with ?acct1=...&token1=...&cur1=...
-//      (repeated as acct2/token2/cur2, etc. if the user has multiple accounts).
-//   3. We parse those params, store them for the session, and open a
-//      WebSocket per account to call "authorize" and fetch balance/details.
-//   4. Accounts are rendered as cards. "Disconnect" clears everything.
-//
-// Nothing here places trades yet — that's a later phase, built on top of
-// the authorized tokens saved in sessionStorage.
+//   1. User clicks "Connect to Deriv" -> we generate a PKCE pair + state,
+//      stash them in sessionStorage, and redirect to auth.deriv.com.
+//   2. Deriv redirects back with ?code=...&state=...
+//   3. We verify state, then POST {code, code_verifier} to our Cloudflare
+//      Worker, which exchanges it for an access_token (this step can't
+//      happen directly from the browser — Deriv requires it server-side).
+//   4. With the access_token, GET /accounts lists the user's account(s).
+//   5. Picking an account calls POST /accounts/{id}/otp to get a
+//      ready-to-use WebSocket URL, which api.js connects to directly.
 // ==========================================================
 
-const STORAGE_KEY = "deriv_accounts";
+const TOKEN_KEY = "deriv_access_token";
+const PKCE_KEY = "deriv_pkce";
 
-// Shared app state other scripts (markets.js, trade.js) read from.
 window.AppState = {
-  accounts: [],          // [{loginid, fullname, currency, balance, is_virtual, scopes}, ...]
-  activeLoginid: null,   // which account is authorized on the persistent connection
+  accounts: [],          // [{account_id, balance, currency, account_type}, ...]
+  activeAccountId: null,
+  accessToken: null,
   unsubscribeBalance: null,
 };
 
@@ -35,14 +35,13 @@ const accountListEl   = document.getElementById("account-list");
 const connectionPill  = document.getElementById("connection-pill");
 const appIdDisplay    = document.getElementById("app-id-display");
 
-appIdDisplay.textContent = DERIV_CONFIG.APP_ID;
+appIdDisplay.textContent = DERIV_CONFIG.CLIENT_ID;
 
 // ---------- Screen helpers ----------
 function showScreen(name) {
   connectScreen.classList.add("hidden");
   accountScreen.classList.add("hidden");
   errorScreen.classList.add("hidden");
-
   if (name === "connect") connectScreen.classList.remove("hidden");
   if (name === "account") accountScreen.classList.remove("hidden");
   if (name === "error") errorScreen.classList.remove("hidden");
@@ -62,93 +61,75 @@ function showError(message) {
 }
 
 // ==========================================================
-// Step 1 — Build the OAuth URL and redirect the user to Deriv
+// Step 1 — Redirect to Deriv with PKCE params
 // ==========================================================
-function redirectToDerivOAuth() {
-  const url = new URL(DERIV_CONFIG.OAUTH_URL);
-  url.searchParams.set("app_id", DERIV_CONFIG.APP_ID);
-  // Deriv sends the user back to whatever redirect URI is registered
-  // for this app_id — REDIRECT_URI here is just for our own reference.
+async function redirectToDerivOAuth() {
+  const { codeVerifier, codeChallenge } = await createPkcePair();
+  const state = generateRandomString(24);
+
+  sessionStorage.setItem(PKCE_KEY, JSON.stringify({ codeVerifier, state }));
+
+  const url = new URL(DERIV_CONFIG.AUTH_URL);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("client_id", DERIV_CONFIG.CLIENT_ID);
+  url.searchParams.set("redirect_uri", DERIV_CONFIG.REDIRECT_URI);
+  url.searchParams.set("scope", DERIV_CONFIG.SCOPE);
+  url.searchParams.set("state", state);
+  url.searchParams.set("code_challenge", codeChallenge);
+  url.searchParams.set("code_challenge_method", "S256");
+
   window.location.href = url.toString();
 }
 
 // ==========================================================
-// Step 2 — Parse acctN / tokenN / curN params from the redirect
+// Step 2 — Handle the redirect back (?code=...&state=...)
 // ==========================================================
-function parseAccountsFromUrl() {
+function parseCodeFromUrl() {
   const params = new URLSearchParams(window.location.search);
-  const accounts = [];
-  let i = 1;
-
-  while (params.has(`acct${i}`)) {
-    accounts.push({
-      loginid: params.get(`acct${i}`),
-      token: params.get(`token${i}`),
-      currency: params.get(`cur${i}`),
-    });
-    i++;
-  }
-  return accounts;
+  return { code: params.get("code"), state: params.get("state") };
 }
 
 function stripAuthParamsFromUrl() {
-  // Clean the tokens out of the address bar so they aren't left visible
-  // in browser history / bookmarks.
   const cleanUrl = window.location.origin + window.location.pathname;
   window.history.replaceState({}, document.title, cleanUrl);
 }
 
 // ==========================================================
-// Step 3 — Authorize each account over the Deriv WebSocket API
+// Step 3 — Exchange the code for a token via our Cloudflare Worker
 // ==========================================================
-function authorizeAccount(token) {
-  return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`${DERIV_CONFIG.WS_URL}?app_id=${DERIV_CONFIG.APP_ID}`);
-
-    const timeout = setTimeout(() => {
-      ws.close();
-      reject(new Error("Timed out waiting for Deriv to respond."));
-    }, 10000);
-
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ authorize: token }));
-    };
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-
-      if (data.error) {
-        clearTimeout(timeout);
-        ws.close();
-        reject(new Error(data.error.message));
-        return;
-      }
-
-      if (data.msg_type === "authorize") {
-        clearTimeout(timeout);
-        const info = data.authorize;
-        ws.close(); // Phase 1 only needs the snapshot; later phases will
-                    // keep a persistent connection open for live data/trading.
-        resolve({
-          loginid: info.loginid,
-          fullname: info.fullname,
-          currency: info.currency,
-          balance: info.balance,
-          is_virtual: info.is_virtual,
-          scopes: info.scopes,
-        });
-      }
-    };
-
-    ws.onerror = () => {
-      clearTimeout(timeout);
-      reject(new Error("Could not reach Deriv's server. Check your connection."));
-    };
+async function exchangeCodeForToken(code, codeVerifier) {
+  const res = await fetch(DERIV_CONFIG.TOKEN_EXCHANGE_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, code_verifier: codeVerifier }),
   });
+
+  const data = await res.json();
+  if (!res.ok || data.error) {
+    throw new Error(data.error_description || data.error || "Token exchange failed.");
+  }
+  return data.access_token;
 }
 
 // ==========================================================
-// Step 4 — Render authorized accounts as cards
+// Step 4 — List accounts
+// ==========================================================
+async function fetchAccounts(accessToken) {
+  const res = await fetch(`${DERIV_CONFIG.ACCOUNTS_API_BASE}/accounts`, {
+    headers: {
+      "Authorization": `Bearer ${accessToken}`,
+      "Deriv-App-ID": DERIV_CONFIG.CLIENT_ID,
+    },
+  });
+  const body = await res.json();
+  if (!res.ok) {
+    throw new Error(body.errors?.[0]?.message || "Could not load accounts.");
+  }
+  return body.data;
+}
+
+// ==========================================================
+// Step 5 — Render accounts + activate one via OTP
 // ==========================================================
 function renderAccounts(accounts) {
   accountListEl.innerHTML = "";
@@ -156,20 +137,21 @@ function renderAccounts(accounts) {
   accounts.forEach((acct) => {
     const card = document.createElement("div");
     card.className = "account-card";
-    card.dataset.loginid = acct.loginid;
+    card.dataset.accountId = acct.account_id;
 
-    const typeClass = acct.is_virtual ? "demo" : "real";
-    const typeLabel = acct.is_virtual ? "Demo" : "Real";
+    const isDemo = acct.account_type === "demo";
+    const typeClass = isDemo ? "demo" : "real";
+    const typeLabel = isDemo ? "Demo" : "Real";
 
     card.innerHTML = `
       <div class="acct-card-top">
         <div>
-          <span class="acct-id">${acct.loginid}</span>
+          <span class="acct-id">${acct.account_id}</span>
           <span class="acct-type ${typeClass}">${typeLabel}</span>
         </div>
-        <button class="btn-select" data-loginid="${acct.loginid}">Use this account</button>
+        <button class="btn-select" data-account-id="${acct.account_id}">Use this account</button>
       </div>
-      <div class="acct-balance" id="balance-${acct.loginid}">
+      <div class="acct-balance" id="balance-${acct.account_id}">
         ${Number(acct.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
         <span class="acct-currency">${acct.currency}</span>
       </div>
@@ -178,13 +160,13 @@ function renderAccounts(accounts) {
   });
 
   accountListEl.querySelectorAll(".btn-select").forEach((btn) => {
-    btn.addEventListener("click", () => activateAccount(btn.dataset.loginid));
+    btn.addEventListener("click", () => activateAccount(btn.dataset.accountId));
   });
 }
 
-function markActiveCard(loginid) {
+function markActiveCard(accountId) {
   accountListEl.querySelectorAll(".account-card").forEach((card) => {
-    const isActive = card.dataset.loginid === loginid;
+    const isActive = card.dataset.accountId === accountId;
     card.classList.toggle("active", isActive);
     const btn = card.querySelector(".btn-select");
     btn.textContent = isActive ? "Active" : "Use this account";
@@ -192,88 +174,99 @@ function markActiveCard(loginid) {
   });
 }
 
-/**
- * Authorize the persistent connection (used for live balance, markets,
- * charts and trading) against the chosen account, and subscribe to its
- * live balance stream.
- */
-async function activateAccount(loginid) {
-  const acct = AppState.accounts.find((a) => a.loginid === loginid);
-  if (!acct) return;
-
+async function activateAccount(accountId) {
   try {
-    await derivAPI.connect();
-    await derivAPI.authorize(acct.token);
-
-    if (AppState.unsubscribeBalance) {
-      AppState.unsubscribeBalance();
-    }
-
-    AppState.activeLoginid = loginid;
-    markActiveCard(loginid);
-
-    AppState.unsubscribeBalance = derivAPI.subscribe(
-      { balance: 1 },
-      (data) => {
-        if (!data.balance) return;
-        const el = document.getElementById(`balance-${loginid}`);
-        if (el) {
-          el.innerHTML = `
-            ${Number(data.balance.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-            <span class="acct-currency">${data.balance.currency}</span>
-          `;
-        }
+    const res = await fetch(
+      `${DERIV_CONFIG.ACCOUNTS_API_BASE}/accounts/${accountId}/otp`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${AppState.accessToken}`,
+          "Deriv-App-ID": DERIV_CONFIG.CLIENT_ID,
+        },
       }
     );
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.errors?.[0]?.message || "Could not start session for this account.");
 
-    // Let markets.js / trade.js know they can now use the connection.
-    document.dispatchEvent(new CustomEvent("algotrade:account-ready", { detail: { loginid } }));
+    const wsUrl = body.data.url;
+
+    if (AppState.unsubscribeBalance) AppState.unsubscribeBalance();
+
+    await derivAPI.connectToUrl(wsUrl);
+
+    AppState.activeAccountId = accountId;
+    markActiveCard(accountId);
+    setConnectionPill(true);
+
+    AppState.unsubscribeBalance = derivAPI.subscribe({ balance: 1 }, (data) => {
+      if (!data.balance) return;
+      const el = document.getElementById(`balance-${accountId}`);
+      if (el) {
+        el.innerHTML = `
+          ${Number(data.balance.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          <span class="acct-currency">${data.balance.currency}</span>
+        `;
+      }
+    });
+
+    document.dispatchEvent(new CustomEvent("algotrade:account-ready", { detail: { accountId } }));
   } catch (err) {
     showError(err.message || "Could not activate this account.");
   }
 }
 
 // ==========================================================
-// Step 5 — Orchestration: figure out what state we're in on load
+// Orchestration
 // ==========================================================
-async function loadAndAuthorizeAccounts(accounts) {
+async function handleAuthCallback(code, state) {
+  const stored = JSON.parse(sessionStorage.getItem(PKCE_KEY) || "{}");
+  stripAuthParamsFromUrl();
+
+  if (!stored.state || state !== stored.state) {
+    showError("Security check failed (state mismatch). Please try connecting again.");
+    return;
+  }
+
   try {
-    const authorized = await Promise.all(
-      accounts.map(async (a) => ({ ...(await authorizeAccount(a.token)), token: a.token }))
-    );
-    AppState.accounts = authorized;
-    renderAccounts(authorized);
-    setConnectionPill(true);
+    const accessToken = await exchangeCodeForToken(code, stored.codeVerifier);
+    sessionStorage.setItem(TOKEN_KEY, accessToken);
+    sessionStorage.removeItem(PKCE_KEY);
+    await loadAccounts(accessToken);
+  } catch (err) {
+    showError(err.message || "Could not complete sign-in with Deriv.");
+  }
+}
+
+async function loadAccounts(accessToken) {
+  try {
+    AppState.accessToken = accessToken;
+    const accounts = await fetchAccounts(accessToken);
+    AppState.accounts = accounts;
+    renderAccounts(accounts);
     showScreen("account");
 
-    // Default to the first real account, falling back to the first demo account.
-    const defaultAcct = authorized.find((a) => !a.is_virtual) || authorized[0];
-    if (defaultAcct) await activateAccount(defaultAcct.loginid);
+    const defaultAcct = accounts.find((a) => a.account_type !== "demo") || accounts[0];
+    if (defaultAcct) await activateAccount(defaultAcct.account_id);
   } catch (err) {
-    setConnectionPill(false);
-    showError(err.message || "Authorization failed. Please reconnect.");
+    showError(err.message || "Could not load your Deriv accounts.");
   }
 }
 
 function init() {
-  const urlAccounts = parseAccountsFromUrl();
+  const { code, state } = parseCodeFromUrl();
 
-  if (urlAccounts.length > 0) {
-    // Just came back from Deriv's OAuth page
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(urlAccounts));
-    stripAuthParamsFromUrl();
-    loadAndAuthorizeAccounts(urlAccounts);
+  if (code) {
+    handleAuthCallback(code, state);
     return;
   }
 
-  const saved = sessionStorage.getItem(STORAGE_KEY);
-  if (saved) {
-    // Returning within the same session — re-authorize to get fresh balances
-    loadAndAuthorizeAccounts(JSON.parse(saved));
+  const savedToken = sessionStorage.getItem(TOKEN_KEY);
+  if (savedToken) {
+    loadAccounts(savedToken);
     return;
   }
 
-  // No session yet
   showScreen("connect");
   setConnectionPill(false);
 }
@@ -283,10 +276,13 @@ connectBtn.addEventListener("click", redirectToDerivOAuth);
 retryBtn.addEventListener("click", redirectToDerivOAuth);
 
 disconnectBtn.addEventListener("click", () => {
-  sessionStorage.removeItem(STORAGE_KEY);
+  sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(PKCE_KEY);
   if (AppState.unsubscribeBalance) AppState.unsubscribeBalance();
+  derivAPI.close();
   AppState.accounts = [];
-  AppState.activeLoginid = null;
+  AppState.activeAccountId = null;
+  AppState.accessToken = null;
   setConnectionPill(false);
   showScreen("connect");
 });
