@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AlgoTrade</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">◈</span>
+      <span class="brand-name">AlgoTrade</span>
+    </div>
+    <div id="connection-pill" class="pill pill-offline">
+      <span class="dot"></span> Not connected
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ============ STATE: LOGGED OUT ============ -->
+    <section id="connect-screen" class="hero">
+      <p class="eyebrow">Third-party app · App ID <span id="app-id-display">—</span></p>
+      <h1>Trade on your own Deriv account,<br>from your own screen.</h1>
+      <p class="subhead">
+        Connect your Deriv account to place trades here. Balances, positions and
+        history stay in sync with Deriv itself — nothing happens anywhere else.
+      </p>
+      <button id="connect-btn" class="btn-primary">
+        Connect to Deriv
+      </button>
+      <p class="fineprint">You'll be redirected to Deriv to log in and authorize this app.</p>
+    </section>
+
+    <!-- ============ STATE: LOGGED IN ============ -->
+    <section id="account-screen" class="account-panel hidden">
+      <div class="panel-head">
+        <h2>Connected accounts</h2>
+        <button id="disconnect-btn" class="btn-ghost">Disconnect</button>
+      </div>
+
+      <div id="account-list" class="account-list">
+        <!-- account cards injected here -->
+      </div>
+
+      <div class="markets-section">
+        <div class="markets-head">
+          <h2>Markets</h2>
+          <input id="market-search" type="search" placeholder="Search markets… e.g. Volatility, EUR/USD, Gold" class="market-search" />
+        </div>
+
+        <div id="market-tabs" class="market-tabs">
+          <!-- category tabs injected here -->
+        </div>
+
+        <div id="market-list" class="market-list">
+          <p class="market-loading">Loading markets…</p>
+        </div>
+
+        <div id="price-strip" class="price-strip hidden">
+          <div>
+            <span id="price-symbol-name" class="price-symbol-name">—</span>
+            <span id="price-symbol-code" class="price-symbol-code">—</span>
+          </div>
+          <div id="price-value" class="price-value">—</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ STATE: ERROR ============ -->
+    <section id="error-screen" class="hero hidden">
+      <h1 class="error-title">Connection failed</h1>
+      <p class="subhead" id="error-message">Something went wrong while authorizing.</p>
+      <button id="retry-btn" class="btn-primary">Try again</button>
+    </section>
+
+  </main>
+
+  <footer>
+    <p>Trades execute on Deriv's own servers under your Deriv account. This app never holds your funds.</p>
+  </footer>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/markets.js"></script>
+</body>
+</html>
