@@ -1,35 +1,32 @@
 // ==========================================================
 // AlgoTrade — api.js
 // A single persistent WebSocket connection to Deriv, shared by the
-// whole app. Everything else (balance, markets, charts, trading)
-// talks to Deriv through this one connection instead of opening
-// its own sockets.
+// whole app. Connects using the OTP-embedded URL obtained from the
+// REST accounts/otp endpoint (see auth.js) — the OTP already
+// authenticates the connection, so there's no separate "authorize"
+// step like the old API required.
 //
 // Usage:
-//   await derivAPI.connect();
-//   const authInfo = await derivAPI.authorize(token);
-//   const unsub = derivAPI.subscribe({ balance: 1, subscribe: 1 }, (data) => {...});
+//   await derivAPI.connectToUrl(otpWsUrl);
+//   const unsub = derivAPI.subscribe({ balance: 1 }, (data) => {...});
 //   const response = await derivAPI.send({ active_symbols: "brief" });
 // ==========================================================
 
 class DerivConnection {
-  constructor(appId, wsUrl) {
-    this.appId = appId;
-    this.wsUrl = wsUrl;
+  constructor() {
     this.ws = null;
     this.reqId = 0;
     this.pending = new Map();       // req_id -> {resolve, reject}
     this.subscriptions = new Map(); // req_id -> callback (for streamed data)
     this.connectPromise = null;
-    this.currentToken = null;       // so we can re-authorize after a reconnect
+    this.currentUrl = null;         // so we can reconnect to the same OTP URL
     this.onStatusChange = null;     // optional external hook, e.g. update the UI pill
   }
 
-  connect() {
-    if (this.connectPromise) return this.connectPromise;
-
+  connectToUrl(wsUrl) {
+    this.currentUrl = wsUrl;
     this.connectPromise = new Promise((resolve, reject) => {
-      this.ws = new WebSocket(`${this.wsUrl}?app_id=${this.appId}`);
+      this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
         if (this.onStatusChange) this.onStatusChange("connected");
@@ -46,31 +43,21 @@ class DerivConnection {
       this.ws.onclose = () => {
         if (this.onStatusChange) this.onStatusChange("disconnected");
         this.connectPromise = null;
-        // Simple auto-reconnect. Trade/chart code re-subscribes itself
-        // by listening for "reconnected" and re-issuing subscriptions.
-        setTimeout(() => this._reconnect(), 2000);
+        // NOTE: OTPs are short-lived and single-use, so a naive reconnect
+        // to the same URL will likely fail once it closes. When we build
+        // the trade panel we'll wire this to request a fresh OTP instead.
       };
     });
 
     return this.connectPromise;
   }
 
-  async _reconnect() {
-    await this.connect();
-    if (this.currentToken) {
-      await this.authorize(this.currentToken);
-    }
-    if (this.onStatusChange) this.onStatusChange("reconnected");
-  }
-
   _handleMessage(event) {
     const data = JSON.parse(event.data);
 
     if (data.req_id !== undefined) {
-      // Streamed/subscribed data keeps arriving under the same req_id
       if (this.subscriptions.has(data.req_id)) {
         this.subscriptions.get(data.req_id)(data);
-        // Also resolve the one-time pending promise the first time it arrives
         if (this.pending.has(data.req_id)) {
           const { resolve, reject } = this.pending.get(data.req_id);
           this.pending.delete(data.req_id);
@@ -114,11 +101,9 @@ class DerivConnection {
     };
   }
 
-  async authorize(token) {
-    this.currentToken = token;
-    const res = await this.send({ authorize: token });
-    return res.authorize;
+  close() {
+    if (this.ws) this.ws.close();
   }
 }
 
-const derivAPI = new DerivConnection(DERIV_CONFIG.APP_ID, DERIV_CONFIG.WS_URL);
+const derivAPI = new DerivConnection();
