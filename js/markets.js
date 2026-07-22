@@ -1,15 +1,8 @@
 // ==========================================================
-// AlgoTrade — markets.js  (New Deriv API field names)
-// Once the persistent connection is authorized (see auth.js), this:
-//   1. Fetches every tradable symbol across all Deriv markets
-//   2. Groups them into category tabs (Forex, Synthetic Indices, etc.)
-//   3. Renders a searchable list
-//   4. Streams a live spot price for whatever symbol is selected
-//
-// AppState.selectedSymbol / AppState.unsubscribeTicks are shared so
-// the upcoming chart + trade panel can build on the same selection.
+// AlgoTrade — markets.js
 // ==========================================================
 
+window.AppState = window.AppState || {};
 window.AppState.allSymbols = [];
 window.AppState.activeTab = null;
 window.AppState.selectedSymbol = null;
@@ -25,7 +18,6 @@ const priceValueEl = document.getElementById("price-value");
 
 let symbolsLoaded = false;
 
-// "synthetic_index" -> "Synthetic Index", "major_pairs" -> "Major Pairs"
 function titleCase(rawCode) {
   if (!rawCode) return "Other";
   return rawCode
@@ -39,8 +31,6 @@ async function loadMarkets() {
   symbolsLoaded = true;
 
   try {
-    // New API: only "brief" vs "full" is accepted — no product_type,
-    // landing_company, etc. (those were rejected as "not allowed").
     const res = await derivAPI.send({ active_symbols: "brief" });
 
     AppState.allSymbols = (res.active_symbols || []).map((s) => ({
@@ -54,12 +44,20 @@ async function loadMarkets() {
 
     renderTabs();
     renderList();
+
+    // Auto-select first symbol so chart isn't empty when Manual Trader opens
+    if (AppState.allSymbols.length > 0) {
+      selectSymbol(AppState.allSymbols[0].symbol, AppState.allSymbols[0].displayName);
+    }
   } catch (err) {
-    marketListEl.innerHTML = `<p class="market-error">Couldn't load markets: ${err.message}</p>`;
+    if (marketListEl) {
+      marketListEl.innerHTML = `<p class="market-error">Couldn't load markets: ${err.message}</p>`;
+    }
   }
 }
 
 function renderTabs() {
+  if (!marketTabsEl) return;
   const seen = new Set();
   const categories = [];
   AppState.allSymbols.forEach((s) => {
@@ -79,14 +77,15 @@ function renderTabs() {
     btn.addEventListener("click", () => {
       AppState.activeTab = btn.dataset.cat;
       marketTabsEl.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b === btn));
-      marketSearchEl.value = "";
+      if (marketSearchEl) marketSearchEl.value = "";
       renderList();
     });
   });
 }
 
 function renderList() {
-  const query = marketSearchEl.value.trim().toLowerCase();
+  if (!marketListEl) return;
+  const query = marketSearchEl ? marketSearchEl.value.trim().toLowerCase() : "";
 
   const filtered = AppState.allSymbols.filter((s) => {
     if (query) {
@@ -117,6 +116,7 @@ function renderList() {
     btn.addEventListener("click", () => selectSymbol(btn.dataset.symbol, btn.dataset.name));
   });
 }
+
 function selectSymbol(symbol, displayName) {
   if (AppState.unsubscribeTicks) {
     AppState.unsubscribeTicks();
@@ -126,33 +126,32 @@ function selectSymbol(symbol, displayName) {
   AppState.selectedSymbol = symbol;
   renderList();
 
-  priceStripEl.classList.remove("hidden");
-  priceSymbolNameEl.textContent = displayName;
-  priceSymbolCodeEl.textContent = symbol;
-  priceValueEl.textContent = "…";
+  if (priceStripEl) priceStripEl.classList.remove("hidden");
+  if (priceSymbolNameEl) priceSymbolNameEl.textContent = displayName;
+  if (priceSymbolCodeEl) priceSymbolCodeEl.textContent = symbol;
+  if (priceValueEl) priceValueEl.textContent = "…";
 
-  // 1. Point iframe directly to Deriv's live SmartCharts app
+  // 1. Point iframe to Deriv's live SmartCharts app
   const chartContainer = document.getElementById("chart-container");
   const chartIframe = document.getElementById("deriv-chart-iframe");
-  
   if (chartContainer && chartIframe) {
     chartContainer.classList.remove("hidden");
     chartIframe.src = `https://charts.deriv.com/deriv?symbol=${symbol}&theme=dark`;
   }
 
-  // 2. Show execution panel and digit spotter
+  // 2. Reveal trade panel & digit spotter
   const tradePanel = document.getElementById("trade-panel");
   const digitSpotter = document.getElementById("digit-spotter");
   if (tradePanel) tradePanel.classList.remove("hidden");
   if (digitSpotter) digitSpotter.classList.remove("hidden");
 
-  // 3. Subscribe to tick stream for live price and Last Digit Cursor
+  // 3. Subscribe to real-time tick stream
   AppState.unsubscribeTicks = derivAPI.subscribe({ ticks: symbol }, (data) => {
     if (data.tick) {
       const rawPrice = data.tick.quote;
-      priceValueEl.textContent = rawPrice;
+      if (priceValueEl) priceValueEl.textContent = rawPrice;
 
-      // Extract last digit for the Red Cursor Spotter
+      // Extract last digit for Last Digit Spotter
       const priceStr = String(rawPrice);
       const lastChar = priceStr.slice(-1);
       if (!isNaN(lastChar)) {
@@ -174,26 +173,8 @@ function updateDigitSpotter(digit) {
   }
 }
 
-
-  AppState.selectedSymbol = symbol;
-  renderList();
-
-  priceStripEl.classList.remove("hidden");
-  priceSymbolNameEl.textContent = displayName;
-  priceSymbolCodeEl.textContent = symbol;
-  priceValueEl.textContent = "…";
-
-  // Note: unlike active_symbols, the ticks request/response still use
-  // the plain "symbol" field name in the new API (not underlying_symbol).
-  AppState.unsubscribeTicks = derivAPI.subscribe({ ticks: symbol }, (data) => {
-    if (data.tick) {
-      priceValueEl.textContent = data.tick.quote;
-    }
-  });
-
-  document.dispatchEvent(new CustomEvent("algotrade:symbol-selected", { detail: { symbol, displayName } }));
+if (marketSearchEl) {
+  marketSearchEl.addEventListener("input", renderList);
 }
-
-marketSearchEl.addEventListener("input", renderList);
 
 document.addEventListener("algotrade:account-ready", loadMarkets);
