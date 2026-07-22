@@ -117,12 +117,63 @@ function renderList() {
     btn.addEventListener("click", () => selectSymbol(btn.dataset.symbol, btn.dataset.name));
   });
 }
-
 function selectSymbol(symbol, displayName) {
   if (AppState.unsubscribeTicks) {
     AppState.unsubscribeTicks();
     AppState.unsubscribeTicks = null;
   }
+
+  AppState.selectedSymbol = symbol;
+  renderList();
+
+  priceStripEl.classList.remove("hidden");
+  priceSymbolNameEl.textContent = displayName;
+  priceSymbolCodeEl.textContent = symbol;
+  priceValueEl.textContent = "…";
+
+  // 1. Point iframe directly to Deriv's live SmartCharts app
+  const chartContainer = document.getElementById("chart-container");
+  const chartIframe = document.getElementById("deriv-chart-iframe");
+  
+  if (chartContainer && chartIframe) {
+    chartContainer.classList.remove("hidden");
+    chartIframe.src = `https://charts.deriv.com/deriv?symbol=${symbol}&theme=dark`;
+  }
+
+  // 2. Show execution panel and digit spotter
+  const tradePanel = document.getElementById("trade-panel");
+  const digitSpotter = document.getElementById("digit-spotter");
+  if (tradePanel) tradePanel.classList.remove("hidden");
+  if (digitSpotter) digitSpotter.classList.remove("hidden");
+
+  // 3. Subscribe to tick stream for live price and Last Digit Cursor
+  AppState.unsubscribeTicks = derivAPI.subscribe({ ticks: symbol }, (data) => {
+    if (data.tick) {
+      const rawPrice = data.tick.quote;
+      priceValueEl.textContent = rawPrice;
+
+      // Extract last digit for the Red Cursor Spotter
+      const priceStr = String(rawPrice);
+      const lastChar = priceStr.slice(-1);
+      if (!isNaN(lastChar)) {
+        updateDigitSpotter(parseInt(lastChar, 10));
+      }
+    }
+  });
+
+  document.dispatchEvent(new CustomEvent("algotrade:symbol-selected", { detail: { symbol, displayName } }));
+}
+
+function updateDigitSpotter(digit) {
+  document.querySelectorAll(".digit-cell").forEach((cell) => {
+    cell.classList.remove("active-digit");
+  });
+  const activeCell = document.getElementById(`digit-cell-${digit}`);
+  if (activeCell) {
+    activeCell.classList.add("active-digit");
+  }
+}
+
 
   AppState.selectedSymbol = symbol;
   renderList();
