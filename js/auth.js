@@ -38,14 +38,45 @@ const appIdDisplay    = document.getElementById("app-id-display");
 appIdDisplay.textContent = DERIV_CONFIG.CLIENT_ID;
 
 // ---------- Screen helpers ----------
+// Add nav references
+const appNav = document.getElementById("app-nav");
+const navAccountsBtn = document.getElementById("nav-accounts-btn");
+const navManualBtn = document.getElementById("nav-manual-btn");
+const accountsView = document.getElementById("accounts-view");
+const manualTraderView = document.getElementById("manual-trader-view");
+
 function showScreen(name) {
   connectScreen.classList.add("hidden");
   accountScreen.classList.add("hidden");
   errorScreen.classList.add("hidden");
+  appNav.classList.add("hidden");
+
   if (name === "connect") connectScreen.classList.remove("hidden");
-  if (name === "account") accountScreen.classList.remove("hidden");
+  if (name === "account") {
+    accountScreen.classList.remove("hidden");
+    appNav.classList.remove("hidden"); // Show Manual Trader tab in top bar
+    switchTab("accounts");
+  }
   if (name === "error") errorScreen.classList.remove("hidden");
 }
+
+function switchTab(tab) {
+  if (tab === "accounts") {
+    accountsView.classList.remove("hidden");
+    manualTraderView.classList.add("hidden");
+    navAccountsBtn.classList.add("active");
+    navManualBtn.classList.remove("active");
+  } else if (tab === "manual") {
+    accountsView.classList.add("hidden");
+    manualTraderView.classList.remove("hidden");
+    navAccountsBtn.classList.remove("active");
+    navManualBtn.classList.add("active");
+  }
+}
+
+// Attach Tab Switcher Listeners
+navAccountsBtn.addEventListener("click", () => switchTab("accounts"));
+navManualBtn.addEventListener("click", () => switchTab("manual"));
 
 function setConnectionPill(connected) {
   connectionPill.classList.toggle("pill-online", connected);
