@@ -68,6 +68,63 @@
           </div>
           <div id="price-value" class="price-value">—</div>
         </div>
+
+        <div id="trade-panel" class="trade-panel hidden">
+          <h3>Place a trade</h3>
+
+          <div class="trade-row">
+            <label>Contract</label>
+            <select id="trade-contract-type" class="trade-select">
+              <option value="CALL">Rise</option>
+              <option value="PUT">Fall</option>
+              <option value="DIGITMATCH">Matches</option>
+              <option value="DIGITDIFF">Differs</option>
+              <option value="DIGITOVER">Over</option>
+              <option value="DIGITUNDER">Under</option>
+            </select>
+          </div>
+
+          <div id="trade-digit-row" class="trade-row hidden">
+            <label>Digit</label>
+            <select id="trade-digit" class="trade-select"></select>
+          </div>
+
+          <div class="trade-row trade-row-split">
+            <div>
+              <label>Duration</label>
+              <input id="trade-duration" type="number" min="1" value="5" class="trade-input" />
+            </div>
+            <div>
+              <label>Unit</label>
+              <select id="trade-duration-unit" class="trade-select">
+                <option value="t">Ticks</option>
+                <option value="s">Seconds</option>
+                <option value="m">Minutes</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="trade-row">
+            <label>Stake</label>
+            <input id="trade-stake" type="number" min="0.35" step="0.01" value="1" class="trade-input" />
+          </div>
+
+          <button id="trade-quote-btn" class="btn-primary trade-btn">Get price</button>
+
+          <div id="trade-quote-result" class="trade-quote hidden">
+            <div class="trade-quote-row">
+              <span>Payout</span>
+              <span id="trade-payout">—</span>
+            </div>
+            <div class="trade-quote-row">
+              <span>Cost</span>
+              <span id="trade-cost">—</span>
+            </div>
+            <button id="trade-buy-btn" class="btn-primary trade-btn">Buy</button>
+          </div>
+
+          <div id="trade-result" class="trade-result hidden"></div>
+        </div>
       </div>
     </section>
 
@@ -89,5 +146,6 @@
   <script src="js/api.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/markets.js"></script>
+  <script src="js/trade.js"></script>
 </body>
 </html>
