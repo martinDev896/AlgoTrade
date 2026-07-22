@@ -1,140 +1,121 @@
 // ==========================================================
 // AlgoTrade — trade.js
-// Rise/Fall and Digits (Matches/Differs, Over/Under) trading.
-//
-// Flow: pick contract + duration + stake -> "Get price" sends a
-// one-off `proposal` request -> shows payout -> "Buy" sends `buy`
-// with that proposal's id and price to actually execute the trade
-// on Deriv's servers under the active account.
+// Handles trade proposals and order executions via WebSockets.
 // ==========================================================
 
-const DIGIT_CONTRACT_TYPES = ["DIGITMATCH", "DIGITDIFF", "DIGITOVER", "DIGITUNDER"];
+let activeProposalId = null;
 
-const tradePanelEl       = document.getElementById("trade-panel");
-const contractTypeEl     = document.getElementById("trade-contract-type");
-const digitRowEl         = document.getElementById("trade-digit-row");
-const digitSelectEl      = document.getElementById("trade-digit");
-const durationEl         = document.getElementById("trade-duration");
-const durationUnitEl     = document.getElementById("trade-duration-unit");
-const stakeEl            = document.getElementById("trade-stake");
-const quoteBtn           = document.getElementById("trade-quote-btn");
-const quoteResultEl      = document.getElementById("trade-quote-result");
-const payoutEl           = document.getElementById("trade-payout");
-const costEl             = document.getElementById("trade-cost");
-const buyBtn             = document.getElementById("trade-buy-btn");
-const tradeResultEl      = document.getElementById("trade-result");
+const contractTypeSelect = document.getElementById("trade-contract-type");
+const digitRow = document.getElementById("trade-digit-row");
+const durationInput = document.getElementById("trade-duration");
+const durationUnitSelect = document.getElementById("trade-duration-unit");
+const stakeInput = document.getElementById("trade-stake");
+const quoteBtn = document.getElementById("trade-quote-btn");
+const quoteResultBox = document.getElementById("trade-quote-result");
+const payoutEl = document.getElementById("trade-payout");
+const costEl = document.getElementById("trade-cost");
+const buyBtn = document.getElementById("trade-buy-btn");
+const resultBox = document.getElementById("trade-result");
 
-let currentProposal = null; // { id, ask_price, payout }
+// Toggle digit selection row for digit-based contract types
+contractTypeSelect.addEventListener("change", () => {
+  const cType = contractTypeSelect.value;
+  const isDigitMarket = cType.startsWith("DIGIT");
 
-// Populate the digit dropdown (0-9) once.
-for (let d = 0; d <= 9; d++) {
-  const opt = document.createElement("option");
-  opt.value = d;
-  opt.textContent = d;
-  digitSelectEl.appendChild(opt);
-}
+  if (isDigitMarket) {
+    digitRow.classList.remove("hidden");
+    durationUnitSelect.value = "t"; 
+  } else {
+    digitRow.classList.add("hidden");
+  }
+});
 
-function isDigitContract(type) {
-  return DIGIT_CONTRACT_TYPES.includes(type);
-}
-
-function updateDigitRowVisibility() {
-  digitRowEl.classList.toggle("hidden", !isDigitContract(contractTypeEl.value));
-}
-
-contractTypeEl.addEventListener("change", updateDigitRowVisibility);
-updateDigitRowVisibility();
-
-function getActiveCurrency() {
-  const acct = AppState.accounts.find((a) => a.account_id === AppState.activeAccountId);
-  return acct ? acct.currency : "USD";
-}
-
-function resetQuote() {
-  currentProposal = null;
-  quoteResultEl.classList.add("hidden");
-  tradeResultEl.classList.add("hidden");
-}
-
-async function requestQuote() {
+// 1. Get Proposal Quote
+quoteBtn.addEventListener("click", async () => {
   if (!AppState.selectedSymbol) {
-    tradeResultEl.textContent = "Pick a market above first.";
-    tradeResultEl.classList.remove("hidden");
+    alert("Please select a market symbol first.");
     return;
   }
 
-  resetQuote();
-  quoteBtn.disabled = true;
-  quoteBtn.textContent = "Getting price…";
+  quoteResultBox.classList.add("hidden");
+  resultBox.classList.add("hidden");
 
-  const contractType = contractTypeEl.value;
-  const request = {
+  const contractType = contractTypeSelect.value;
+  const stake = parseFloat(stakeInput.value);
+  const duration = parseInt(durationInput.value, 10);
+  const durationUnit = durationUnitSelect.value;
+  const selectedDigit = parseInt(document.getElementById("trade-digit").value, 10);
+
+  const proposalReq = {
     proposal: 1,
-    amount: parseFloat(stakeEl.value),
+    amount: stake,
     basis: "stake",
     contract_type: contractType,
-    currency: getActiveCurrency(),
-    underlying_symbol: AppState.selectedSymbol,
-    duration: parseInt(durationEl.value, 10),
-    duration_unit: durationUnitEl.value,
+    currency: "USD",
+    duration: duration,
+    duration_unit: durationUnit,
+    symbol: AppState.selectedSymbol,
   };
 
-  if (isDigitContract(contractType)) {
-    request.barrier = digitSelectEl.value;
+  if (contractType.startsWith("DIGIT")) {
+    proposalReq.barrier = String(selectedDigit);
   }
 
   try {
-    const res = await derivAPI.send(request);
-    if (!res.proposal || !res.proposal.id) {
-      throw new Error("No price returned for this combination.");
+    quoteBtn.textContent = "Calculating...";
+    quoteBtn.disabled = true;
+
+    const res = await derivAPI.send(proposalReq);
+
+    if (res.error) {
+      throw new Error(res.error.message);
     }
-    currentProposal = res.proposal;
-    payoutEl.textContent = `${Number(currentProposal.payout).toFixed(2)} ${getActiveCurrency()}`;
-    costEl.textContent = `${Number(currentProposal.ask_price).toFixed(2)} ${getActiveCurrency()}`;
-    quoteResultEl.classList.remove("hidden");
+
+    if (res.proposal) {
+      activeProposalId = res.proposal.id;
+      payoutEl.textContent = `$${res.proposal.payout}`;
+      costEl.textContent = `$${res.proposal.ask_price}`;
+      quoteResultBox.classList.remove("hidden");
+    }
   } catch (err) {
-    tradeResultEl.textContent = err.message || "Could not get a price for this trade.";
-    tradeResultEl.classList.remove("hidden");
+    resultBox.classList.remove("hidden");
+    resultBox.className = "trade-result error";
+    resultBox.textContent = `Proposal Error: ${err.message}`;
   } finally {
+    quoteBtn.textContent = "Get Proposal Quote";
     quoteBtn.disabled = false;
-    quoteBtn.textContent = "Get price";
   }
-}
+});
 
-async function executeBuy() {
-  if (!currentProposal) return;
-
-  buyBtn.disabled = true;
-  buyBtn.textContent = "Placing trade…";
+// 2. Buy Order Execution
+buyBtn.addEventListener("click", async () => {
+  if (!activeProposalId) return;
 
   try {
+    buyBtn.disabled = true;
+    buyBtn.textContent = "Executing...";
+
     const res = await derivAPI.send({
-      buy: currentProposal.id,
-      price: currentProposal.ask_price,
+      buy: activeProposalId,
+      price: parseFloat(stakeInput.value),
     });
 
-    if (!res.buy || !res.buy.contract_id) {
-      throw new Error("Trade did not go through — no contract was returned.");
+    if (res.error) {
+      throw new Error(res.error.message);
     }
 
-    tradeResultEl.textContent = `Trade placed — contract #${res.buy.contract_id}. Track it on your Deriv dashboard.`;
-    tradeResultEl.classList.remove("hidden");
-    quoteResultEl.classList.add("hidden");
-    currentProposal = null;
+    resultBox.classList.remove("hidden");
+    resultBox.className = "trade-result";
+    resultBox.innerHTML = `<strong>Trade Placed!</strong><br>Contract ID: ${res.buy.contract_id}<br>Purchase Price: $${res.buy.buy_price}`;
+
+    quoteResultBox.classList.add("hidden");
+    activeProposalId = null;
   } catch (err) {
-    tradeResultEl.textContent = err.message || "Trade failed.";
-    tradeResultEl.classList.remove("hidden");
+    resultBox.classList.remove("hidden");
+    resultBox.className = "trade-result error";
+    resultBox.textContent = `Execution Error: ${err.message}`;
   } finally {
     buyBtn.disabled = false;
-    buyBtn.textContent = "Buy";
+    buyBtn.textContent = "Execute Trade Now";
   }
-}
-
-quoteBtn.addEventListener("click", requestQuote);
-buyBtn.addEventListener("click", executeBuy);
-
-// Show the trade panel once a market is selected.
-document.addEventListener("algotrade:symbol-selected", () => {
-  tradePanelEl.classList.remove("hidden");
-  resetQuote();
 });
