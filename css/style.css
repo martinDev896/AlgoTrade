@@ -426,6 +426,91 @@ main {
   color: var(--gold-hi);
 }
 
+/* ---------- Trade panel ---------- */
+
+.trade-panel {
+  margin-top: 1.25rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+
+.trade-panel h3 {
+  margin: 0 0 1rem;
+  font-size: 1.05rem;
+}
+
+.trade-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.9rem;
+}
+
+.trade-row label {
+  font-size: 0.78rem;
+  color: var(--text-lo);
+}
+
+.trade-row-split {
+  flex-direction: row;
+  gap: 1rem;
+}
+
+.trade-row-split > div {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.trade-select, .trade-input {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--text-hi);
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+}
+
+.trade-btn {
+  width: 100%;
+  padding: 0.75rem;
+  font-size: 0.92rem;
+}
+
+.trade-quote {
+  margin-top: 1rem;
+  border-top: 1px dashed var(--line);
+  padding-top: 1rem;
+}
+
+.trade-quote-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.88rem;
+  margin-bottom: 0.5rem;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.trade-result {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  color: var(--rise);
+  background: rgba(46,204,143,0.08);
+  border: 1px solid rgba(46,204,143,0.3);
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+}
+
+.trade-result.error {
+  color: var(--fall);
+  background: rgba(255,92,92,0.08);
+  border-color: rgba(255,92,92,0.3);
+}
+
 /* ---------- Footer ---------- */
 
 footer {
