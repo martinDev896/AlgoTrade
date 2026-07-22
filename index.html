@@ -1,192 +1,149 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>AlgoTrade</title>
-  <link rel="stylesheet" href="css/style.css" />
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AlgoTrade</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-  <div class="app-shell">
-    
-    <!-- TOP NAVIGATION BAR -->
-    <header class="topbar">
-      <div class="brand">
-        <span class="brand-mark">◈</span>
-        <span class="brand-name">AlgoTrade</span>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">◈</span>
+      <span class="brand-name">AlgoTrade</span>
+    </div>
+    <div id="connection-pill" class="pill pill-offline">
+      <span class="dot"></span> Not connected
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ============ STATE: LOGGED OUT ============ -->
+    <section id="connect-screen" class="hero">
+      <p class="eyebrow">Third-party app · App ID <span id="app-id-display">—</span></p>
+      <h1>Trade on your own Deriv account,<br>from your own screen.</h1>
+      <p class="subhead">
+        Connect your Deriv account to place trades here. Balances, positions and
+        history stay in sync with Deriv itself — nothing happens anywhere else.
+      </p>
+      <button id="connect-btn" class="btn-primary">
+        Connect to Deriv
+      </button>
+      <p class="fineprint">You'll be redirected to Deriv to log in and authorize this app.</p>
+    </section>
+
+    <!-- ============ STATE: LOGGED IN ============ -->
+    <section id="account-screen" class="account-panel hidden">
+      <div class="panel-head">
+        <h2>Connected accounts</h2>
+        <button id="disconnect-btn" class="btn-ghost">Disconnect</button>
       </div>
 
-      <!-- TABS (Visible when logged in) -->
-      <nav id="app-nav" class="nav-links hidden">
-        <button id="nav-accounts-btn" class="nav-tab active">Accounts</button>
-        <button id="nav-manual-btn" class="nav-tab">Manual Trader</button>
-      </nav>
-
-      <div id="connection-pill" class="pill pill-offline">
-        <span class="dot"></span> Not connected
+      <div id="account-list" class="account-list">
+        <!-- account cards injected here -->
       </div>
-    </header>
 
-    <main class="main-content">
-
-      <!-- STATE: NOT LOGGED IN -->
-      <section id="connect-screen" class="card connect-card">
-        <h1>Connect your account</h1>
-        <p class="subtitle">Link your Deriv account to authorize trading and access live market tools.</p>
-        <button id="connect-btn" class="btn-primary">Connect Deriv Account</button>
-      </section>
-
-      <!-- STATE: LOGGED IN / DASHBOARD -->
-      <section id="account-screen" class="account-panel hidden">
-        <div class="panel-head">
-          <h2>Dashboard</h2>
-          <button id="disconnect-btn" class="btn-ghost">Disconnect</button>
+      <div class="markets-section">
+        <div class="markets-head">
+          <h2>Markets</h2>
+          <input id="market-search" type="search" placeholder="Search markets… e.g. Volatility, EUR/USD, Gold" class="market-search" />
         </div>
 
-        <!-- TAB 1: ACCOUNTS VIEW -->
-        <div id="accounts-view">
-          <div id="account-list" class="account-list">
-            <!-- Account cards injected here via JS -->
+        <div id="market-tabs" class="market-tabs">
+          <!-- category tabs injected here -->
+        </div>
+
+        <div id="market-list" class="market-list">
+          <p class="market-loading">Loading markets…</p>
+        </div>
+
+        <div id="price-strip" class="price-strip hidden">
+          <div>
+            <span id="price-symbol-name" class="price-symbol-name">—</span>
+            <span id="price-symbol-code" class="price-symbol-code">—</span>
           </div>
+          <div id="price-value" class="price-value">—</div>
         </div>
 
-        <!-- TAB 2: MANUAL TRADER VIEW -->
-        <div id="manual-trader-view" class="manual-trader-container hidden">
-          <div class="markets-section">
-            <div class="markets-head">
-              <h2>Markets</h2>
-              <input id="market-search" type="search" placeholder="Search markets… e.g. Volatility, EUR/USD, Gold" class="market-search" />
+        <div id="trade-panel" class="trade-panel hidden">
+          <h3>Place a trade</h3>
+
+          <div class="trade-row">
+            <label>Contract</label>
+            <select id="trade-contract-type" class="trade-select">
+              <option value="CALL">Rise</option>
+              <option value="PUT">Fall</option>
+              <option value="DIGITMATCH">Matches</option>
+              <option value="DIGITDIFF">Differs</option>
+              <option value="DIGITOVER">Over</option>
+              <option value="DIGITUNDER">Under</option>
+            </select>
+          </div>
+
+          <div id="trade-digit-row" class="trade-row hidden">
+            <label>Digit</label>
+            <select id="trade-digit" class="trade-select"></select>
+          </div>
+
+          <div class="trade-row trade-row-split">
+            <div>
+              <label>Duration</label>
+              <input id="trade-duration" type="number" min="1" value="5" class="trade-input" />
             </div>
-
-            <div id="market-tabs" class="market-tabs"></div>
-
-            <div id="market-list" class="market-list">
-              <p class="market-loading">Loading markets…</p>
-            </div>
-
-            <!-- PRICE STRIP -->
-            <div id="price-strip" class="price-strip hidden">
-              <div>
-                <span id="price-symbol-name" class="price-symbol-name">—</span>
-                <span id="price-symbol-code" class="price-symbol-code">—</span>
-              </div>
-              <div id="price-value" class="price-value">—</div>
-            </div>
-
-            <!-- DERIV LIVE SMARTCHARTS EMBED -->
-            <div id="chart-container" class="chart-container hidden">
-              <div class="chart-header">
-                <span class="chart-title">DERIV SMARTCHARTS</span>
-              </div>
-              <iframe id="deriv-chart-iframe" src="" frameborder="0" scrolling="no" allow="autoplay"></iframe>
-            </div>
-
-            <!-- LAST DIGIT SPOTTER -->
-            <div id="digit-spotter" class="digit-spotter hidden">
-              <div class="digit-spotter-title">LAST DIGIT TICK MONITOR</div>
-              <div class="digit-grid">
-                <div class="digit-cell" id="digit-cell-0">0</div>
-                <div class="digit-cell" id="digit-cell-1">1</div>
-                <div class="digit-cell" id="digit-cell-2">2</div>
-                <div class="digit-cell" id="digit-cell-3">3</div>
-                <div class="digit-cell" id="digit-cell-4">4</div>
-                <div class="digit-cell" id="digit-cell-5">5</div>
-                <div class="digit-cell" id="digit-cell-6">6</div>
-                <div class="digit-cell" id="digit-cell-7">7</div>
-                <div class="digit-cell" id="digit-cell-8">8</div>
-                <div class="digit-cell" id="digit-cell-9">9</div>
-              </div>
-            </div>
-
-            <!-- TRADE EXECUTION PANEL -->
-            <div id="trade-panel" class="trade-panel hidden">
-              <h3>Place a trade</h3>
-
-              <div class="trade-row">
-                <label>Contract Type</label>
-                <select id="trade-contract-type" class="trade-select">
-                  <option value="CALL">Rise (Higher)</option>
-                  <option value="PUT">Fall (Lower)</option>
-                  <option value="DIGITMATCH">Matches</option>
-                  <option value="DIGITDIFF">Differs</option>
-                  <option value="DIGITOVER">Over</option>
-                  <option value="DIGITUNDER">Under</option>
-                </select>
-              </div>
-
-              <div id="trade-digit-row" class="trade-row hidden">
-                <label>Prediction Digit (0–9)</label>
-                <select id="trade-digit" class="trade-select">
-                  <option value="0">0</option>
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                  <option value="3">3</option>
-                  <option value="4">4</option>
-                  <option value="5" selected>5</option>
-                  <option value="6">6</option>
-                  <option value="7">7</option>
-                  <option value="8">8</option>
-                  <option value="9">9</option>
-                </select>
-              </div>
-
-              <div class="trade-row trade-row-split">
-                <div>
-                  <label>Duration</label>
-                  <input id="trade-duration" type="number" min="1" max="10" value="5" class="trade-input" />
-                </div>
-                <div>
-                  <label>Unit</label>
-                  <select id="trade-duration-unit" class="trade-select">
-                    <option value="t">Ticks</option>
-                    <option value="s">Seconds</option>
-                    <option value="m">Minutes</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="trade-row">
-                <label>Stake Amount</label>
-                <input id="trade-stake" type="number" min="0.35" step="0.01" value="1.00" class="trade-input" />
-              </div>
-
-              <button id="trade-quote-btn" class="btn-primary trade-btn">Get Proposal Quote</button>
-
-              <div id="trade-quote-result" class="trade-quote hidden">
-                <div class="trade-quote-row">
-                  <span>Payout:</span>
-                  <span id="trade-payout">—</span>
-                </div>
-                <div class="trade-quote-row">
-                  <span>Cost/Stake:</span>
-                  <span id="trade-cost">—</span>
-                </div>
-                <button id="trade-buy-btn" class="btn-primary trade-btn">Execute Trade Now</button>
-              </div>
-
-              <div id="trade-result" class="trade-result hidden"></div>
+            <div>
+              <label>Unit</label>
+              <select id="trade-duration-unit" class="trade-select">
+                <option value="t">Ticks</option>
+                <option value="s">Seconds</option>
+                <option value="m">Minutes</option>
+              </select>
             </div>
           </div>
+
+          <div class="trade-row">
+            <label>Stake</label>
+            <input id="trade-stake" type="number" min="0.35" step="0.01" value="1" class="trade-input" />
+          </div>
+
+          <button id="trade-quote-btn" class="btn-primary trade-btn">Get price</button>
+
+          <div id="trade-quote-result" class="trade-quote hidden">
+            <div class="trade-quote-row">
+              <span>Payout</span>
+              <span id="trade-payout">—</span>
+            </div>
+            <div class="trade-quote-row">
+              <span>Cost</span>
+              <span id="trade-cost">—</span>
+            </div>
+            <button id="trade-buy-btn" class="btn-primary trade-btn">Buy</button>
+          </div>
+
+          <div id="trade-result" class="trade-result hidden"></div>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <!-- ERROR DISPLAY -->
-      <section id="error-screen" class="card error-card hidden">
-        <h2>Connection Error</h2>
-        <p id="error-message" class="error-text"></p>
-        <button id="retry-btn" class="btn-primary">Try Again</button>
-      </section>
+    <!-- ============ STATE: ERROR ============ -->
+    <section id="error-screen" class="hero hidden">
+      <h1 class="error-title">Connection failed</h1>
+      <p class="subhead" id="error-message">Something went wrong while authorizing.</p>
+      <button id="retry-btn" class="btn-primary">Try again</button>
+    </section>
 
-    </main>
-  </div>
+  </main>
 
-  <!-- SCRIPT LOADING ORDER -->
+  <footer>
+    <p>Trades execute on Deriv's own servers under your Deriv account. This app never holds your funds.</p>
+  </footer>
+
   <script src="js/config.js"></script>
   <script src="js/pkce.js"></script>
-  <script src="js/ws.js"></script>
+  <script src="js/api.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/markets.js"></script>
   <script src="js/trade.js"></script>
