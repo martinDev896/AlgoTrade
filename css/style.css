@@ -1,3 +1,7 @@
+/* GLOBAL HIDDEN UTILITY - CRITICAL */
+.hidden {
+  display: none !important;
+}
 /* ---------- Navigation Tabs ---------- */
 .nav-links {
   display: flex;
