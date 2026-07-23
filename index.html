@@ -6,6 +6,7 @@
 <title>AlgoTrade</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -47,85 +48,126 @@
         <!-- account cards injected here -->
       </div>
 
-      <div class="markets-section">
-        <div class="markets-head">
-          <h2>Markets</h2>
-          <input id="market-search" type="search" placeholder="Search markets… e.g. Volatility, EUR/USD, Gold" class="market-search" />
-        </div>
+      <!-- ============ APP NAV TABS ============ -->
+      <nav id="app-tabs" class="app-tabs">
+        <button class="app-tab active" data-tab="manual-trader">Manual Trader</button>
+        <button class="app-tab" data-tab="copy-trading">Copy Trading</button>
+        <button class="app-tab" data-tab="bot-builder">Bot Builder</button>
+      </nav>
 
-        <div id="market-tabs" class="market-tabs">
-          <!-- category tabs injected here -->
-        </div>
+      <!-- ============ TAB: MANUAL TRADER ============ -->
+      <div id="tab-manual-trader" class="tab-panel">
+        <div class="trader-workspace">
 
-        <div id="market-list" class="market-list">
-          <p class="market-loading">Loading markets…</p>
-        </div>
-
-        <div id="price-strip" class="price-strip hidden">
-          <div>
-            <span id="price-symbol-name" class="price-symbol-name">—</span>
-            <span id="price-symbol-code" class="price-symbol-code">—</span>
-          </div>
-          <div id="price-value" class="price-value">—</div>
-        </div>
-
-        <div id="trade-panel" class="trade-panel hidden">
-          <h3>Place a trade</h3>
-
-          <div class="trade-row">
-            <label>Contract</label>
-            <select id="trade-contract-type" class="trade-select">
-              <option value="CALL">Rise</option>
-              <option value="PUT">Fall</option>
-              <option value="DIGITMATCH">Matches</option>
-              <option value="DIGITDIFF">Differs</option>
-              <option value="DIGITOVER">Over</option>
-              <option value="DIGITUNDER">Under</option>
-            </select>
-          </div>
-
-          <div id="trade-digit-row" class="trade-row hidden">
-            <label>Digit</label>
-            <select id="trade-digit" class="trade-select"></select>
-          </div>
-
-          <div class="trade-row trade-row-split">
-            <div>
-              <label>Duration</label>
-              <input id="trade-duration" type="number" min="1" value="5" class="trade-input" />
+          <!-- ---- Markets sidebar ---- -->
+          <aside class="markets-sidebar">
+            <input id="market-search" type="search" placeholder="Search markets…" class="market-search" />
+            <div id="market-tabs" class="market-tabs">
+              <!-- category tabs injected here -->
             </div>
-            <div>
-              <label>Unit</label>
-              <select id="trade-duration-unit" class="trade-select">
-                <option value="t">Ticks</option>
-                <option value="s">Seconds</option>
-                <option value="m">Minutes</option>
-              </select>
+            <div id="market-list" class="market-list">
+              <p class="market-loading">Loading markets…</p>
+            </div>
+          </aside>
+
+          <!-- ---- Chart + digits ---- -->
+          <div class="chart-area">
+            <div id="price-strip" class="price-strip hidden">
+              <div>
+                <span id="price-symbol-name" class="price-symbol-name">—</span>
+                <span id="price-symbol-code" class="price-symbol-code">—</span>
+              </div>
+              <div id="price-value" class="price-value">—</div>
+            </div>
+
+            <div id="chart-container" class="chart-container">
+              <p class="chart-placeholder">Pick a market to load its chart.</p>
+            </div>
+
+            <div id="digits-widget" class="digits-widget hidden">
+              <p class="digits-label">Last digit distribution — last 1,000 ticks</p>
+              <div id="digits-row" class="digits-row">
+                <!-- digit circles injected here -->
+              </div>
             </div>
           </div>
 
-          <div class="trade-row">
-            <label>Stake</label>
-            <input id="trade-stake" type="number" min="0.35" step="0.01" value="1" class="trade-input" />
+          <!-- ---- Trade panel ---- -->
+          <div class="trade-panel-wrapper">
+            <div id="trade-panel" class="trade-panel hidden">
+              <h3>Place a trade</h3>
+
+              <div class="trade-type-tabs">
+                <button class="trade-type-tab active" data-group="rise_fall">Rise/Fall</button>
+                <button class="trade-type-tab" data-group="digits">Digits</button>
+              </div>
+
+              <div id="rise-fall-row" class="trade-direction-row">
+                <button class="btn-direction btn-rise active" data-contract="CALL">▲ Rise</button>
+                <button class="btn-direction btn-fall" data-contract="PUT">▼ Fall</button>
+              </div>
+
+              <div id="trade-digit-row" class="trade-direction-row hidden">
+                <select id="digit-contract-select" class="trade-select">
+                  <option value="DIGITMATCH">Matches</option>
+                  <option value="DIGITDIFF">Differs</option>
+                  <option value="DIGITOVER">Over</option>
+                  <option value="DIGITUNDER">Under</option>
+                </select>
+                <select id="trade-digit" class="trade-select"></select>
+              </div>
+
+              <div class="trade-row trade-row-split">
+                <div>
+                  <label>Duration</label>
+                  <input id="trade-duration" type="number" min="1" value="5" class="trade-input" />
+                </div>
+                <div>
+                  <label>Unit</label>
+                  <select id="trade-duration-unit" class="trade-select">
+                    <option value="t">Ticks</option>
+                    <option value="s">Seconds</option>
+                    <option value="m">Minutes</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="trade-row">
+                <label>Stake</label>
+                <input id="trade-stake" type="number" min="0.35" step="0.01" value="1" class="trade-input" />
+              </div>
+
+              <button id="trade-quote-btn" class="btn-quote">Get price</button>
+
+              <div id="trade-quote-result" class="trade-quote hidden">
+                <div class="trade-quote-row">
+                  <span>Payout</span>
+                  <span id="trade-payout">—</span>
+                </div>
+                <div class="trade-quote-row">
+                  <span>Cost</span>
+                  <span id="trade-cost">—</span>
+                </div>
+                <button id="trade-buy-btn" class="btn-buy">Buy</button>
+              </div>
+
+              <div id="trade-result" class="trade-result hidden"></div>
+            </div>
           </div>
 
-          <button id="trade-quote-btn" class="btn-primary trade-btn">Get price</button>
-
-          <div id="trade-quote-result" class="trade-quote hidden">
-            <div class="trade-quote-row">
-              <span>Payout</span>
-              <span id="trade-payout">—</span>
-            </div>
-            <div class="trade-quote-row">
-              <span>Cost</span>
-              <span id="trade-cost">—</span>
-            </div>
-            <button id="trade-buy-btn" class="btn-primary trade-btn">Buy</button>
-          </div>
-
-          <div id="trade-result" class="trade-result hidden"></div>
         </div>
       </div>
+
+      <!-- ============ TAB: COPY TRADING (placeholder) ============ -->
+      <div id="tab-copy-trading" class="tab-panel hidden">
+        <p class="coming-soon">Copy Trading is coming soon.</p>
+      </div>
+
+      <!-- ============ TAB: BOT BUILDER (placeholder) ============ -->
+      <div id="tab-bot-builder" class="tab-panel hidden">
+        <p class="coming-soon">Bot Builder is coming soon.</p>
+      </div>
+
     </section>
 
     <!-- ============ STATE: ERROR ============ -->
@@ -145,7 +187,10 @@
   <script src="js/pkce.js"></script>
   <script src="js/api.js"></script>
   <script src="js/auth.js"></script>
+  <script src="js/tabs.js"></script>
   <script src="js/markets.js"></script>
+  <script src="js/chart.js"></script>
+  <script src="js/digits.js"></script>
   <script src="js/trade.js"></script>
 </body>
 </html>
