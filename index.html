@@ -12,12 +12,27 @@
 <body>
 
   <header class="topbar">
-    <div class="brand">
-      <span class="brand-mark">◈</span>
-      <span class="brand-name">AlgoTrade</span>
+    <div class="topbar-left">
+      <div class="brand">
+        <span class="brand-mark">◈</span>
+        <span class="brand-name">AlgoTrade</span>
+      </div>
+      <nav id="app-tabs" class="app-tabs hidden">
+        <button class="app-tab active" data-tab="manual-trader">Manual Trader</button>
+        <button class="app-tab" data-tab="copy-trading">Copy Trading</button>
+        <button class="app-tab" data-tab="bot-builder">Bot Builder</button>
+      </nav>
     </div>
-    <div id="connection-pill" class="pill pill-offline">
-      <span class="dot"></span> Not connected
+
+    <div class="topbar-right">
+      <div id="balance-widget" class="balance-widget hidden">
+        <select id="account-switcher" class="account-switcher"></select>
+        <span id="balance-amount" class="balance-amount">—</span>
+        <button id="disconnect-btn" class="btn-disconnect" title="Disconnect">⏻</button>
+      </div>
+      <div id="connection-pill" class="pill pill-offline">
+        <span class="dot"></span> Not connected
+      </div>
     </div>
   </header>
 
@@ -39,21 +54,6 @@
 
     <!-- ============ STATE: LOGGED IN ============ -->
     <section id="account-screen" class="account-panel hidden">
-      <div class="panel-head">
-        <h2>Connected accounts</h2>
-        <button id="disconnect-btn" class="btn-ghost">Disconnect</button>
-      </div>
-
-      <div id="account-list" class="account-list">
-        <!-- account cards injected here -->
-      </div>
-
-      <!-- ============ APP NAV TABS ============ -->
-      <nav id="app-tabs" class="app-tabs">
-        <button class="app-tab active" data-tab="manual-trader">Manual Trader</button>
-        <button class="app-tab" data-tab="copy-trading">Copy Trading</button>
-        <button class="app-tab" data-tab="bot-builder">Bot Builder</button>
-      </nav>
 
       <!-- ============ TAB: MANUAL TRADER ============ -->
       <div id="tab-manual-trader" class="tab-panel">
