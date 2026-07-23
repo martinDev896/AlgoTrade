@@ -50,6 +50,7 @@ async function loadMarkets() {
       marketLabel: titleCase(s.market),
       submarketLabel: titleCase(s.submarket),
       exchangeIsOpen: !!s.exchange_is_open,
+      pipSize: s.pip_size,
     }));
 
     renderTabs();
