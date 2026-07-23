@@ -918,3 +918,112 @@ footer {
   color: var(--fall);
   font-size: 0.82rem;
 }
+
+/* ==========================================================
+   Navbar restructure: light header, tabs + balance widget inline
+   ========================================================== */
+
+.topbar {
+  background: #FFFFFF;
+  border-bottom: 1px solid #E4E7EB;
+  color: #1A1D22;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.topbar .brand-name { color: #1A1D22; }
+
+.topbar .app-tabs {
+  margin: 0;
+  border-bottom: none;
+}
+
+.topbar .app-tab {
+  color: #6B7280;
+  padding: 0.4rem 0.1rem;
+}
+
+.topbar .app-tab.active {
+  color: #9A6B12;
+}
+
+/* ---------- Balance widget ---------- */
+
+.balance-widget {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #F5F6F8;
+  border: 1px solid #E4E7EB;
+  border-radius: 999px;
+  padding: 0.35rem 0.5rem 0.35rem 0.9rem;
+}
+
+.account-switcher {
+  background: transparent;
+  border: none;
+  color: #6B7280;
+  font-size: 0.78rem;
+  font-family: inherit;
+}
+
+.balance-amount {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: #1A1D22;
+}
+
+.btn-disconnect {
+  background: #FFFFFF;
+  border: 1px solid #E4E7EB;
+  color: #8A93A1;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.btn-disconnect:hover {
+  border-color: var(--fall);
+  color: var(--fall);
+}
+
+.topbar .pill-offline { color: #9096A2; border-color: #E4E7EB; }
+.topbar .pill-online { color: var(--rise); border-color: rgba(46,204,143,0.35); }
+
+/* ==========================================================
+   App light mode — once connected, the whole trading surface
+   (sidebar, chart area, trade panel, tabs) switches to a light
+   theme to match Deriv's own DTrader look. Because most components
+   are built on these shared custom properties, redefining them
+   here re-themes the app without touching every rule individually.
+   ========================================================== */
+
+body.app-light-mode {
+  --bg: #F0F2F5;
+  --panel: #FFFFFF;
+  --line: #E4E7EB;
+  --text-hi: #1A1D22;
+  --text-lo: #6B7280;
+}
+
+body.app-light-mode .account-panel .btn-select,
+body.app-light-mode .trade-select,
+body.app-light-mode .trade-input {
+  background: #FFFFFF;
+}
