@@ -8,42 +8,77 @@
 // on Deriv's servers under the active account.
 // ==========================================================
 
-const DIGIT_CONTRACT_TYPES = ["DIGITMATCH", "DIGITDIFF", "DIGITOVER", "DIGITUNDER"];
+const GREEN_CONTRACTS = ["CALL", "DIGITMATCH", "DIGITOVER"];
+const RED_CONTRACTS = ["PUT", "DIGITDIFF", "DIGITUNDER"];
 
-const tradePanelEl       = document.getElementById("trade-panel");
-const contractTypeEl     = document.getElementById("trade-contract-type");
-const digitRowEl         = document.getElementById("trade-digit-row");
-const digitSelectEl      = document.getElementById("trade-digit");
-const durationEl         = document.getElementById("trade-duration");
-const durationUnitEl     = document.getElementById("trade-duration-unit");
-const stakeEl            = document.getElementById("trade-stake");
-const quoteBtn           = document.getElementById("trade-quote-btn");
-const quoteResultEl      = document.getElementById("trade-quote-result");
-const payoutEl           = document.getElementById("trade-payout");
-const costEl             = document.getElementById("trade-cost");
-const buyBtn             = document.getElementById("trade-buy-btn");
-const tradeResultEl      = document.getElementById("trade-result");
+const tradePanelEl        = document.getElementById("trade-panel");
+const typeTabEls          = document.querySelectorAll(".trade-type-tab");
+const riseFallRowEl       = document.getElementById("rise-fall-row");
+const digitRowEl          = document.getElementById("trade-digit-row");
+const directionBtns       = document.querySelectorAll(".btn-direction");
+const digitContractSelect = document.getElementById("digit-contract-select");
+const digitValueSelect    = document.getElementById("trade-digit");
+const durationEl          = document.getElementById("trade-duration");
+const durationUnitEl      = document.getElementById("trade-duration-unit");
+const stakeEl             = document.getElementById("trade-stake");
+const quoteBtn            = document.getElementById("trade-quote-btn");
+const quoteResultEl       = document.getElementById("trade-quote-result");
+const payoutEl            = document.getElementById("trade-payout");
+const costEl              = document.getElementById("trade-cost");
+const buyBtn              = document.getElementById("trade-buy-btn");
+const tradeResultEl       = document.getElementById("trade-result");
 
-let currentProposal = null; // { id, ask_price, payout }
+let activeGroup = "rise_fall";       // "rise_fall" | "digits"
+let activeDirection = "CALL";        // for rise/fall buttons
+let currentProposal = null;          // { id, ask_price, payout }
 
-// Populate the digit dropdown (0-9) once.
+// Populate the digit value dropdown (0-9) once.
 for (let d = 0; d <= 9; d++) {
   const opt = document.createElement("option");
   opt.value = d;
   opt.textContent = d;
-  digitSelectEl.appendChild(opt);
+  digitValueSelect.appendChild(opt);
 }
 
-function isDigitContract(type) {
-  return DIGIT_CONTRACT_TYPES.includes(type);
+function currentContractType() {
+  return activeGroup === "rise_fall" ? activeDirection : digitContractSelect.value;
 }
 
-function updateDigitRowVisibility() {
-  digitRowEl.classList.toggle("hidden", !isDigitContract(contractTypeEl.value));
+function updateButtonColors() {
+  const type = currentContractType();
+  const isGreen = GREEN_CONTRACTS.includes(type);
+  quoteBtn.classList.toggle("btn-quote-green", isGreen);
+  quoteBtn.classList.toggle("btn-quote-red", !isGreen);
+  buyBtn.classList.toggle("btn-buy-green", isGreen);
+  buyBtn.classList.toggle("btn-buy-red", !isGreen);
 }
 
-contractTypeEl.addEventListener("change", updateDigitRowVisibility);
-updateDigitRowVisibility();
+// ---- Rise/Fall vs Digits tab switching ----
+typeTabEls.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    typeTabEls.forEach((t) => t.classList.toggle("active", t === tab));
+    activeGroup = tab.dataset.group;
+    riseFallRowEl.classList.toggle("hidden", activeGroup !== "rise_fall");
+    digitRowEl.classList.toggle("hidden", activeGroup !== "digits");
+    updateButtonColors();
+    resetQuote();
+  });
+});
+
+// ---- Rise / Fall direction buttons ----
+directionBtns.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    directionBtns.forEach((b) => b.classList.toggle("active", b === btn));
+    activeDirection = btn.dataset.contract;
+    updateButtonColors();
+    resetQuote();
+  });
+});
+
+digitContractSelect.addEventListener("change", () => {
+  updateButtonColors();
+  resetQuote();
+});
 
 function getActiveCurrency() {
   const acct = AppState.accounts.find((a) => a.account_id === AppState.activeAccountId);
@@ -58,7 +93,7 @@ function resetQuote() {
 
 async function requestQuote() {
   if (!AppState.selectedSymbol) {
-    tradeResultEl.textContent = "Pick a market above first.";
+    tradeResultEl.textContent = "Pick a market first.";
     tradeResultEl.classList.remove("hidden");
     return;
   }
@@ -67,7 +102,7 @@ async function requestQuote() {
   quoteBtn.disabled = true;
   quoteBtn.textContent = "Getting price…";
 
-  const contractType = contractTypeEl.value;
+  const contractType = currentContractType();
   const request = {
     proposal: 1,
     amount: parseFloat(stakeEl.value),
@@ -79,8 +114,8 @@ async function requestQuote() {
     duration_unit: durationUnitEl.value,
   };
 
-  if (isDigitContract(contractType)) {
-    request.barrier = digitSelectEl.value;
+  if (activeGroup === "digits") {
+    request.barrier = digitValueSelect.value;
   }
 
   try {
@@ -132,6 +167,8 @@ async function executeBuy() {
 
 quoteBtn.addEventListener("click", requestQuote);
 buyBtn.addEventListener("click", executeBuy);
+
+updateButtonColors();
 
 // Show the trade panel once a market is selected.
 document.addEventListener("algotrade:symbol-selected", () => {
