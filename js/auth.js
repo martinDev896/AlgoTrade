@@ -11,6 +11,9 @@
 //   4. With the access_token, GET /accounts lists the user's account(s).
 //   5. Picking an account calls POST /accounts/{id}/otp to get a
 //      ready-to-use WebSocket URL, which api.js connects to directly.
+//
+// The active account's balance now lives in the navbar (top-right),
+// with a dropdown to switch between accounts — not a card grid.
 // ==========================================================
 
 const TOKEN_KEY = "deriv_access_token";
@@ -24,16 +27,19 @@ window.AppState = {
 };
 
 // ---------- DOM references ----------
-const connectScreen   = document.getElementById("connect-screen");
-const accountScreen   = document.getElementById("account-screen");
-const errorScreen     = document.getElementById("error-screen");
-const errorMessageEl  = document.getElementById("error-message");
-const connectBtn      = document.getElementById("connect-btn");
-const disconnectBtn   = document.getElementById("disconnect-btn");
-const retryBtn        = document.getElementById("retry-btn");
-const accountListEl   = document.getElementById("account-list");
-const connectionPill  = document.getElementById("connection-pill");
-const appIdDisplay    = document.getElementById("app-id-display");
+const connectScreen    = document.getElementById("connect-screen");
+const accountScreen    = document.getElementById("account-screen");
+const errorScreen      = document.getElementById("error-screen");
+const errorMessageEl   = document.getElementById("error-message");
+const connectBtn       = document.getElementById("connect-btn");
+const disconnectBtn    = document.getElementById("disconnect-btn");
+const retryBtn         = document.getElementById("retry-btn");
+const connectionPill   = document.getElementById("connection-pill");
+const appIdDisplay     = document.getElementById("app-id-display");
+const appTabsNav       = document.getElementById("app-tabs");
+const balanceWidgetEl  = document.getElementById("balance-widget");
+const accountSwitcherEl = document.getElementById("account-switcher");
+const balanceAmountEl  = document.getElementById("balance-amount");
 
 appIdDisplay.textContent = DERIV_CONFIG.CLIENT_ID;
 
@@ -58,6 +64,10 @@ function setConnectionPill(connected) {
 function showError(message) {
   errorMessageEl.textContent = message;
   showScreen("error");
+}
+
+function setAppLightMode(on) {
+  document.body.classList.toggle("app-light-mode", on);
 }
 
 // ==========================================================
@@ -129,49 +139,20 @@ async function fetchAccounts(accessToken) {
 }
 
 // ==========================================================
-// Step 5 — Render accounts + activate one via OTP
+// Step 5 — Populate the account switcher + activate one via OTP
 // ==========================================================
-function renderAccounts(accounts) {
-  accountListEl.innerHTML = "";
-
-  accounts.forEach((acct) => {
-    const card = document.createElement("div");
-    card.className = "account-card";
-    card.dataset.accountId = acct.account_id;
-
-    const isDemo = acct.account_type === "demo";
-    const typeClass = isDemo ? "demo" : "real";
-    const typeLabel = isDemo ? "Demo" : "Real";
-
-    card.innerHTML = `
-      <div class="acct-card-top">
-        <div>
-          <span class="acct-id">${acct.account_id}</span>
-          <span class="acct-type ${typeClass}">${typeLabel}</span>
-        </div>
-        <button class="btn-select" data-account-id="${acct.account_id}">Use this account</button>
-      </div>
-      <div class="acct-balance" id="balance-${acct.account_id}">
-        ${Number(acct.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-        <span class="acct-currency">${acct.currency}</span>
-      </div>
-    `;
-    accountListEl.appendChild(card);
-  });
-
-  accountListEl.querySelectorAll(".btn-select").forEach((btn) => {
-    btn.addEventListener("click", () => activateAccount(btn.dataset.accountId));
-  });
+function renderAccountSwitcher(accounts) {
+  accountSwitcherEl.innerHTML = accounts
+    .map((acct) => {
+      const label = `${acct.account_type === "demo" ? "Demo" : "Real"} · ${acct.account_id}`;
+      return `<option value="${acct.account_id}">${label}</option>`;
+    })
+    .join("");
 }
 
-function markActiveCard(accountId) {
-  accountListEl.querySelectorAll(".account-card").forEach((card) => {
-    const isActive = card.dataset.accountId === accountId;
-    card.classList.toggle("active", isActive);
-    const btn = card.querySelector(".btn-select");
-    btn.textContent = isActive ? "Active" : "Use this account";
-    btn.disabled = isActive;
-  });
+function updateBalanceDisplay(amount, currency) {
+  balanceAmountEl.textContent =
+    `${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2 })} ${currency}`;
 }
 
 async function activateAccount(accountId) {
@@ -196,18 +177,18 @@ async function activateAccount(accountId) {
     await derivAPI.connectToUrl(wsUrl);
 
     AppState.activeAccountId = accountId;
-    markActiveCard(accountId);
+    accountSwitcherEl.value = accountId;
     setConnectionPill(true);
+    balanceWidgetEl.classList.remove("hidden");
+
+    // Show a snapshot immediately from the accounts list while we wait
+    // for the first live balance push.
+    const snapshot = AppState.accounts.find((a) => a.account_id === accountId);
+    if (snapshot) updateBalanceDisplay(snapshot.balance, snapshot.currency);
 
     AppState.unsubscribeBalance = derivAPI.subscribe({ balance: 1 }, (data) => {
       if (!data.balance) return;
-      const el = document.getElementById(`balance-${accountId}`);
-      if (el) {
-        el.innerHTML = `
-          ${Number(data.balance.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-          <span class="acct-currency">${data.balance.currency}</span>
-        `;
-      }
+      updateBalanceDisplay(data.balance.balance, data.balance.currency);
     });
 
     document.dispatchEvent(new CustomEvent("algotrade:account-ready", { detail: { accountId } }));
@@ -215,6 +196,10 @@ async function activateAccount(accountId) {
     showError(err.message || "Could not activate this account.");
   }
 }
+
+accountSwitcherEl.addEventListener("change", () => {
+  activateAccount(accountSwitcherEl.value);
+});
 
 // ==========================================================
 // Orchestration
@@ -243,7 +228,10 @@ async function loadAccounts(accessToken) {
     AppState.accessToken = accessToken;
     const accounts = await fetchAccounts(accessToken);
     AppState.accounts = accounts;
-    renderAccounts(accounts);
+    renderAccountSwitcher(accounts);
+
+    setAppLightMode(true);
+    appTabsNav.classList.remove("hidden");
     showScreen("account");
 
     const defaultAcct = accounts.find((a) => a.account_type !== "demo") || accounts[0];
@@ -283,6 +271,9 @@ disconnectBtn.addEventListener("click", () => {
   AppState.accounts = [];
   AppState.activeAccountId = null;
   AppState.accessToken = null;
+  setAppLightMode(false);
+  appTabsNav.classList.add("hidden");
+  balanceWidgetEl.classList.add("hidden");
   setConnectionPill(false);
   showScreen("connect");
 });
