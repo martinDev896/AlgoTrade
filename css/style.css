@@ -310,8 +310,8 @@ main {
   padding: 0.55rem 0.8rem;
   border-radius: 8px;
   flex: 1;
-  min-width: 180px;
-  max-width: 320px;
+  min-width: 90px;
+  max-width: 120px;
 }
 
 .market-search::placeholder { color: var(--text-lo); }
