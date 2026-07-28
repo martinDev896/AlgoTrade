@@ -3,7 +3,7 @@
 // A single persistent WebSocket connection to Deriv, shared by the
 // whole app. Connects using the OTP-embedded URL obtained from the
 // REST accounts/otp endpoint (see auth.js) — the OTP already
-// authenticates the connection, so there's no separate "authorize"
+// authenticates the conection, so there's no separate "authorize"
 // step like the old API required.
 //
 // Usage:
