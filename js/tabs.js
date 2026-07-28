@@ -2,7 +2,7 @@
 // AlgoTrade — tabs.js
 // Switches between the top-level app sections (Manual Trader,
 // Copy Trading, Bot Builder, ...). Only Manual Trader has real
-// content right now — the others are placeholders until we build them.
+// cotent right now — the others are placeholders until we build them.
 // ==========================================================
 
 const appTabButtons = document.querySelectorAll(".app-tab");
