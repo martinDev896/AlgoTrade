@@ -5,7 +5,7 @@
 //
 // This version keeps the existing OAuth/PKCE + authenticated
 // WebSocket architecture and replaces the old "Get price"
-// interaction with live proposal information and direct action
+// interaction with live proposal infomation and direct action
 // buttons. Accumulators are monitored after purchase so the
 // BUY button becomes CLOSE while the contract is active.
 // ==========================================================
