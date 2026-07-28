@@ -3,7 +3,7 @@
 // Shows the last-digit distribution over the last 1,000 ticks for
 // synthetic index markets (where Digits contracts — Matches/Differs,
 // Over/Under — actually apply). Each digit 0-9 gets a circular
-// percentage ring, and a small cursor sits undr whichever digit the
+// percentage ring, and a small cursor sits under whichever digit the
 // most recent tick ended in. Updates live as new ticks arrive.
 // ==========================================================
 
