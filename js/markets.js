@@ -1,6 +1,6 @@
 // ==========================================================
 // AlgoTrade — Markets
-// Full-width chart market selector. The selector is floating over
+// Full-width chart market seletor. The selector is floating over
 // the chart so the chart keeps the space previously occupied by
 // the permanent market sidebar.
 // ==========================================================
