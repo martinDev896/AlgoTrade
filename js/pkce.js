@@ -1,7 +1,7 @@
 // ==========================================================
 // AlgoTrade — pkce.js
 // Helpers for OAuth 2.0 Authorization Code flow with PKCE.
-// Runs entirely in the browser using the Web Crypto API.
+// Runs etirely in the browser using the Web Crypto API.
 // ==========================================================
 
 function generateRandomString(length) {
