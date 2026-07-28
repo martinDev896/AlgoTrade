@@ -3,8 +3,11 @@
 // Contract families: Accumulators, Rise/Fall, Higher/Lower,
 // Touch/No Touch, Multipliers and Digits.
 //
-// The UI exposes simple trading actions while the underlying
-// Deriv contract_type values remain explicit in the API request.
+// This version keeps the existing OAuth/PKCE + authenticated
+// WebSocket architecture and replaces the old "Get price"
+// interaction with live proposal information and direct action
+// buttons. Accumulators are monitored after purchase so the
+// BUY button becomes CLOSE while the contract is active.
 // ==========================================================
 
 const tradePanelEl = document.getElementById("trade-panel");
@@ -25,8 +28,11 @@ let currentProposal = null;
 let proposalTimer = null;
 let selectedDigit = 0;
 let selectedDigitContract = "DIGITMATCH";
-let selectedAction = null;
+let selectedAction = "ACCU";
 let currentFamily = "accumulators";
+let activeAccumulator = null;
+let accumulatorSubscription = null;
+let accumulatorBusy = false;
 
 const FAMILY_LABELS = {
   accumulators: "Accumulators",
@@ -42,44 +48,97 @@ function getActiveCurrency() {
   return acct ? acct.currency : "USD";
 }
 
-function resetQuote() {
+function money(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? `${n.toFixed(2)} ${getActiveCurrency()}` : "—";
+}
+
+function ensureTradeLayout() {
+  // Put the quote information immediately after the stake row and
+  // the action buttons immediately after the quote. This lets the
+  // existing HTML work without restoring a separate "Get price" button.
+  if (!stakeEl || !quoteResultEl || !tradeActionsEl) return;
+  const stakeRow = stakeEl.closest(".trade-row") || stakeEl.parentElement;
+  if (stakeRow?.parentNode) stakeRow.parentNode.insertBefore(quoteResultEl, stakeRow.nextSibling);
+  if (quoteResultEl.parentNode) quoteResultEl.parentNode.insertBefore(tradeActionsEl, quoteResultEl.nextSibling);
+
+  // Hide the old cost line; users only need the payout information here.
+  if (costEl) {
+    const costRow = costEl.closest(".trade-row, .quote-row, .trade-quote-row");
+    if (costRow) costRow.classList.add("hidden");
+  }
+}
+
+function resetQuote({ keepResult = false } = {}) {
   currentProposal = null;
-  quoteResultEl.classList.add("hidden");
-  tradeResultEl.classList.add("hidden");
+  if (quoteResultEl) quoteResultEl.classList.add("hidden");
+  if (!keepResult && tradeResultEl) tradeResultEl.classList.add("hidden");
   if (proposalTimer) clearTimeout(proposalTimer);
 }
 
-function setAction(action) {
-  selectedAction = action;
-  tradeActionsEl.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.action === action));
-  resetQuote();
-  scheduleQuote();
+function showResult(message, type = "success") {
+  if (!tradeResultEl) return;
+  tradeResultEl.textContent = message;
+  tradeResultEl.classList.remove("hidden", "trade-error", "trade-success");
+  tradeResultEl.classList.add(type === "error" ? "trade-error" : "trade-success");
 }
 
 function makeButton(label, action, className = "") {
   return `<button type="button" class="trade-action-btn ${className}" data-action="${action}">${label}</button>`;
 }
 
+function setPayout(value) {
+  if (payoutEl) payoutEl.textContent = money(value);
+  if (quoteResultEl) quoteResultEl.classList.remove("hidden");
+}
+
+function bindInputsForQuote() {
+  contractControlsEl.querySelectorAll("input, select").forEach((el) => {
+    el.addEventListener("input", () => { resetQuote(); scheduleQuote(); });
+    el.addEventListener("change", () => { resetQuote(); scheduleQuote(); });
+  });
+
+  [stakeEl, durationEl, durationUnitEl].forEach((el) => {
+    if (!el || el.dataset.tradeBound === "1") return;
+    el.dataset.tradeBound = "1";
+    el.addEventListener("input", () => { resetQuote(); scheduleQuote(); });
+    el.addEventListener("change", () => { resetQuote(); scheduleQuote(); });
+  });
+}
+
 function renderControls() {
   currentFamily = tradeTypeEl.value;
   titleEl.textContent = FAMILY_LABELS[currentFamily];
   resetQuote();
+  tradeResultEl?.classList.add("hidden");
 
   if (currentFamily === "accumulators") {
     contractControlsEl.innerHTML = `
       <div class="trade-row">
         <label for="growth-rate">Growth rate</label>
-        <div class="input-with-suffix"><input id="growth-rate" type="number" min="0.1" step="0.1" value="0.1" class="trade-input" /><span>%</span></div>
+        <select id="growth-rate" class="trade-select">
+          <option value="0.01">1%</option>
+          <option value="0.02">2%</option>
+          <option value="0.03">3%</option>
+          <option value="0.04">4%</option>
+          <option value="0.05">5%</option>
+        </select>
       </div>
-      <div class="trade-info">The contract accumulates while the market remains inside its barrier range.</div>
+      <div class="trade-row">
+        <label for="accu-take-profit">Take profit <span class="optional-label">Optional</span></label>
+        <input id="accu-take-profit" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="Enter amount" class="trade-input" />
+      </div>
+      <div class="trade-info">Max payout — 6000.00 USD</div>
     `;
-    durationEl.value = 5;
+    durationEl.value = 1;
     durationUnitEl.value = "t";
-    tradeActionsEl.innerHTML = makeButton("BUY ACCUMULATOR", "ACCU", "trade-action-primary");
+    durationEl.disabled = true;
+    durationUnitEl.disabled = true;
+    tradeActionsEl.innerHTML = makeButton(activeAccumulator ? "CLOSE" : "BUY ACCUMULATOR", activeAccumulator ? "CLOSE_ACCU" : "ACCU", activeAccumulator ? "action-close" : "trade-action-primary");
     selectedAction = "ACCU";
   } else if (currentFamily === "rise_fall") {
-    contractControlsEl.innerHTML = `<div class="trade-subsection-label">Choose direction</div><div class="trade-choice-grid two">${makeButton("▲ RISE", "CALL", "action-rise")}${makeButton("▼ FALL", "PUT", "action-fall")}</div>`;
-    tradeActionsEl.innerHTML = "";
+    contractControlsEl.innerHTML = "";
+    tradeActionsEl.innerHTML = `<div class="trade-choice-grid two rise-fall-actions">${makeButton("▲ RISE", "CALL", "action-rise")}${makeButton("▼ FALL", "PUT", "action-fall")}</div>`;
     selectedAction = "CALL";
   } else if (currentFamily === "higher_lower") {
     contractControlsEl.innerHTML = `
@@ -99,28 +158,38 @@ function renderControls() {
     `;
     durationEl.value = 1;
     durationUnitEl.value = "s";
+    durationEl.disabled = true;
+    durationUnitEl.disabled = true;
     tradeActionsEl.innerHTML = `<div class="trade-choice-grid two">${makeButton("BUY UP", "MULTUP", "action-rise")}${makeButton("BUY DOWN", "MULTDOWN", "action-fall")}</div>`;
     selectedAction = "MULTUP";
   } else if (currentFamily === "digits") {
     contractControlsEl.innerHTML = `
-      <div class="trade-subsection-label">Contract</div>
-      <div class="trade-choice-grid three digit-contracts">
-        ${makeButton("MATCHES", "DIGITMATCH")}${makeButton("DIFFERS", "DIGITDIFF")}${makeButton("OVER", "DIGITOVER")}
-        ${makeButton("UNDER", "DIGITUNDER")}${makeButton("EVEN", "DIGITEVEN")}${makeButton("ODD", "DIGITODD")}
+      <div class="trade-subsection-label">Trade type</div>
+      <div class="trade-choice-grid two digit-group-tabs">
+        ${makeButton("MATCHES", "DIGITMATCH", "digit-group-btn")}${makeButton("DIFFERS", "DIGITDIFF", "digit-group-btn")}
+        ${makeButton("OVER", "DIGITOVER", "digit-group-btn")}${makeButton("UNDER", "DIGITUNDER", "digit-group-btn")}
+        ${makeButton("EVEN", "DIGITEVEN", "digit-group-btn")}${makeButton("ODD", "DIGITODD", "digit-group-btn")}
       </div>
       <div class="trade-subsection-label digit-prediction-label">Last prediction digit</div>
-      <div id="digit-keypad" class="digit-keypad">${Array.from({length: 10}, (_, d) => `<button type="button" class="digit-key${d === selectedDigit ? " selected" : ""}" data-digit="${d}">${d}</button>`).join("")}</div>
+      <div id="digit-keypad" class="digit-keypad">${Array.from({ length: 10 }, (_, d) => `<button type="button" class="digit-key${d === selectedDigit ? " selected" : ""}" data-digit="${d}">${d}</button>`).join("")}</div>
       <div class="selected-digit-summary">Prediction: <strong id="selected-digit-value">${selectedDigit}</strong></div>
     `;
-    tradeActionsEl.innerHTML = "";
+    tradeActionsEl.innerHTML = `
+      <div class="trade-choice-grid two digit-buy-actions">
+        ${makeButton("MATCHES", "DIGITMATCH", "action-rise")}
+        ${makeButton("DIFFERS", "DIGITDIFF", "action-fall")}
+      </div>
+    `;
     selectedAction = selectedDigitContract;
+    updateDigitGroupUI();
 
-    contractControlsEl.querySelectorAll(".digit-contracts .trade-action-btn").forEach((btn) => {
-      btn.addEventListener("click", async () => {
+    contractControlsEl.querySelectorAll(".digit-group-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
         selectedDigitContract = btn.dataset.action;
         selectedAction = selectedDigitContract;
-        contractControlsEl.querySelectorAll(".digit-contracts .trade-action-btn").forEach((b) => b.classList.toggle("active", b === btn));
-        await executeBuy(btn);
+        updateDigitGroupUI();
+        resetQuote();
+        scheduleQuote();
       });
     });
 
@@ -128,35 +197,63 @@ function renderControls() {
       btn.addEventListener("click", () => {
         selectedDigit = Number(btn.dataset.digit);
         contractControlsEl.querySelectorAll(".digit-key").forEach((b) => b.classList.toggle("selected", b === btn));
-        document.getElementById("selected-digit-value").textContent = selectedDigit;
+        const summary = document.getElementById("selected-digit-value");
+        if (summary) summary.textContent = selectedDigit;
         resetQuote();
         scheduleQuote();
       });
     });
-    const firstContract = contractControlsEl.querySelector(`[data-action="${selectedDigitContract}"]`);
-    if (firstContract) firstContract.classList.add("active");
   }
 
-  contractControlsEl.querySelectorAll("input, select").forEach((el) => {
-    el.addEventListener("input", () => { resetQuote(); scheduleQuote(); });
-    el.addEventListener("change", () => { resetQuote(); scheduleQuote(); });
-  });
-
-  if (currentFamily === "rise_fall") {
-    tradeActionsEl.innerHTML = `<div class="trade-choice-grid two">${makeButton("▲ RISE", "CALL", "action-rise")}${makeButton("▼ FALL", "PUT", "action-fall")}</div>`;
+  if (currentFamily !== "accumulators" && currentFamily !== "multipliers") {
+    durationEl.disabled = false;
+    durationUnitEl.disabled = false;
   }
 
-  durationEl.disabled = currentFamily === "multipliers";
-  durationUnitEl.disabled = currentFamily === "multipliers";
+  bindInputsForQuote();
+  updatePayoutPlaceholder();
   scheduleQuote();
+}
+
+function updateDigitGroupUI() {
+  const groups = {
+    DIGITMATCH: ["DIGITMATCH", "DIGITDIFF"],
+    DIGITDIFF: ["DIGITMATCH", "DIGITDIFF"],
+    DIGITOVER: ["DIGITOVER", "DIGITUNDER"],
+    DIGITUNDER: ["DIGITOVER", "DIGITUNDER"],
+    DIGITEVEN: ["DIGITEVEN", "DIGITODD"],
+    DIGITODD: ["DIGITEVEN", "DIGITODD"],
+  };
+  const pair = groups[selectedDigitContract] || groups.DIGITMATCH;
+  const buttons = [...contractControlsEl.querySelectorAll(".digit-group-btn")];
+  buttons.forEach((b) => b.classList.toggle("active", b.dataset.action === selectedDigitContract));
+
+  const buyButtons = [...tradeActionsEl.querySelectorAll("button[data-action]")];
+  buyButtons.forEach((b) => {
+    const action = b.dataset.action;
+    const isPair = pair.includes(action);
+    b.classList.toggle("hidden", !isPair);
+    b.classList.toggle("active", action === selectedDigitContract);
+    b.textContent = action.replace("DIGIT", "");
+  });
+}
+
+function updatePayoutPlaceholder() {
+  if (!payoutEl) return;
+  if (currentFamily === "accumulators") {
+    payoutEl.textContent = "—";
+    quoteResultEl?.classList.add("hidden");
+    return;
+  }
+  payoutEl.textContent = "Pricing…";
 }
 
 function buildProposalRequest() {
   const symbol = AppState.selectedSymbol;
-  if (!symbol || !selectedAction) return null;
+  if (!symbol || !selectedAction || selectedAction === "CLOSE_ACCU") return null;
 
   const amount = Number(stakeEl.value);
-  if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter a valid stake.");
+  if (!Number.isFinite(amount) || amount < 1) throw new Error("Stake must be at least 1.00 USD.");
 
   const request = {
     proposal: 1,
@@ -167,7 +264,7 @@ function buildProposalRequest() {
     underlying_symbol: symbol,
   };
 
-  if (currentFamily !== "multipliers") {
+  if (currentFamily !== "multipliers" && currentFamily !== "accumulators") {
     const duration = Number(durationEl.value);
     if (!Number.isFinite(duration) || duration < 1) throw new Error("Enter a valid duration.");
     request.duration = duration;
@@ -175,7 +272,13 @@ function buildProposalRequest() {
   }
 
   if (currentFamily === "accumulators") {
-    request.growth_rate = Number(document.getElementById("growth-rate")?.value || 0.1);
+    const growthRate = Number(document.getElementById("growth-rate")?.value || 0.01);
+    request.growth_rate = growthRate;
+
+    const takeProfit = Number(document.getElementById("accu-take-profit")?.value || 0);
+    if (takeProfit > 0) {
+      request.limit_order = { take_profit: takeProfit };
+    }
   }
 
   if (currentFamily === "higher_lower") {
@@ -200,7 +303,7 @@ function buildProposalRequest() {
 }
 
 async function requestQuote() {
-  if (!AppState.selectedSymbol) return;
+  if (!AppState.selectedSymbol || activeAccumulator) return;
   try {
     const request = buildProposalRequest();
     if (!request) return;
@@ -208,28 +311,42 @@ async function requestQuote() {
     if (!res.proposal?.id) throw new Error("No proposal was returned for this trade.");
 
     currentProposal = res.proposal;
-    costEl.textContent = `${Number(res.proposal.ask_price ?? 0).toFixed(2)} ${getActiveCurrency()}`;
-    payoutEl.textContent = res.proposal.payout != null ? `${Number(res.proposal.payout).toFixed(2)} ${getActiveCurrency()}` : "—";
-    quoteResultEl.classList.remove("hidden");
+    if (costEl) costEl.textContent = money(res.proposal.ask_price);
+
+    // For binary/digit/multiplier contracts, show the payout as the
+    // only information line between stake and the action buttons.
+    if (currentFamily !== "accumulators") {
+      setPayout(res.proposal.payout);
+    }
   } catch (err) {
     currentProposal = null;
-    tradeResultEl.textContent = err.message || "Could not price this trade.";
-    tradeResultEl.classList.remove("hidden");
+    if (quoteResultEl) quoteResultEl.classList.add("hidden");
+    showResult(err.message || "Could not price this trade.", "error");
   }
 }
 
 function scheduleQuote() {
   if (proposalTimer) clearTimeout(proposalTimer);
-  if (!AppState.selectedSymbol) return;
+  if (!AppState.selectedSymbol || activeAccumulator) return;
   proposalTimer = setTimeout(requestQuote, 350);
 }
 
+function setAction(action) {
+  selectedAction = action;
+  if (currentFamily === "digits") selectedDigitContract = action;
+  tradeActionsEl.querySelectorAll("button[data-action]").forEach((b) => b.classList.toggle("active", b.dataset.action === action));
+  if (currentFamily === "digits") updateDigitGroupUI();
+  resetQuote();
+  scheduleQuote();
+}
+
 async function executeBuy(actionButton) {
-  if (!currentProposal) {
-    await requestQuote();
-  }
+  if (accumulatorBusy || activeAccumulator) return;
+
+  if (!currentProposal) await requestQuote();
   if (!currentProposal) return;
 
+  accumulatorBusy = true;
   actionButton.disabled = true;
   const original = actionButton.textContent;
   actionButton.textContent = "PLACING…";
@@ -237,46 +354,149 @@ async function executeBuy(actionButton) {
   try {
     const res = await derivAPI.send({ buy: currentProposal.id, price: Number(currentProposal.ask_price) });
     if (!res.buy?.contract_id) throw new Error("Trade did not go through — no contract was returned.");
-    tradeResultEl.textContent = `Trade placed — contract #${res.buy.contract_id}.`;
-    tradeResultEl.classList.remove("hidden");
-    quoteResultEl.classList.add("hidden");
+
+    const contractId = res.buy.contract_id;
+    showResult(`Trade placed — contract #${contractId}.`, "success");
     currentProposal = null;
+    quoteResultEl?.classList.add("hidden");
+
+    if (currentFamily === "accumulators") {
+      activeAccumulator = { contractId };
+      await subscribeToAccumulator(contractId);
+      renderControls();
+    }
   } catch (err) {
-    tradeResultEl.textContent = err.message || "Trade failed.";
-    tradeResultEl.classList.remove("hidden");
+    showResult(err.message || "Trade failed.", "error");
   } finally {
+    accumulatorBusy = false;
     actionButton.disabled = false;
     actionButton.textContent = original;
   }
 }
 
+async function subscribeToAccumulator(contractId) {
+  if (accumulatorSubscription) {
+    accumulatorSubscription();
+    accumulatorSubscription = null;
+  }
+
+  accumulatorSubscription = derivAPI.subscribe({
+    proposal_open_contract: 1,
+    contract_id: contractId,
+    subscribe: 1,
+  }, (data) => {
+    const contract = data.proposal_open_contract;
+    if (!contract) return;
+
+    activeAccumulator = {
+      contractId,
+      bidPrice: Number(contract.bid_price || 0),
+      profit: Number(contract.profit || 0),
+      payout: Number(contract.payout || 0),
+      status: contract.status,
+      isSold: !!contract.is_sold,
+    };
+
+    if (contract.is_sold || contract.status === "sold") {
+      const finalProfit = Number(contract.profit || 0);
+      showResult(`Accumulator closed. Profit: ${money(finalProfit)}.`, finalProfit >= 0 ? "success" : "error");
+      clearAccumulatorState();
+      return;
+    }
+
+    renderAccumulatorLiveState();
+  });
+}
+
+function renderAccumulatorLiveState() {
+  if (currentFamily !== "accumulators" || !activeAccumulator) return;
+  const live = activeAccumulator;
+  if (payoutEl) payoutEl.textContent = `Current value: ${money(live.bidPrice)}`;
+  quoteResultEl?.classList.remove("hidden");
+
+  tradeActionsEl.innerHTML = makeButton("CLOSE", "CLOSE_ACCU", "action-close");
+}
+
+async function closeAccumulator() {
+  if (!activeAccumulator || accumulatorBusy) return;
+  accumulatorBusy = true;
+
+  const button = tradeActionsEl.querySelector('[data-action="CLOSE_ACCU"]');
+  if (button) {
+    button.disabled = true;
+    button.textContent = "CLOSING…";
+  }
+
+  try {
+    // price: 0 means sell at market according to the current Deriv API.
+    const res = await derivAPI.send({ sell: activeAccumulator.contractId, price: 0 });
+    if (!res.sell?.sold_for && !res.sell?.transaction_id && !res.sell?.contract_id) {
+      // Some responses expose different sell fields; a successful response
+      // is still accepted when no error is returned.
+    }
+    showResult(`Accumulator closed — contract #${activeAccumulator.contractId}.`, "success");
+    clearAccumulatorState();
+  } catch (err) {
+    showResult(err.message || "Could not close the accumulator.", "error");
+    if (button) {
+      button.disabled = false;
+      button.textContent = "CLOSE";
+    }
+  } finally {
+    accumulatorBusy = false;
+  }
+}
+
+function clearAccumulatorState() {
+  if (accumulatorSubscription) {
+    accumulatorSubscription();
+    accumulatorSubscription = null;
+  }
+  activeAccumulator = null;
+  currentProposal = null;
+  quoteResultEl?.classList.add("hidden");
+  renderControls();
+}
+
 tradeActionsEl.addEventListener("click", (event) => {
   const btn = event.target.closest("button[data-action]");
   if (!btn) return;
-  setAction(btn.dataset.action);
+
+  const action = btn.dataset.action;
+  if (action === "CLOSE_ACCU") {
+    closeAccumulator();
+    return;
+  }
+
+  setAction(action);
   executeBuy(btn);
 });
 
-contractControlsEl.addEventListener("click", (event) => {
-  const btn = event.target.closest(".trade-action-btn");
-  if (!btn || currentFamily === "digits") return;
-  setAction(btn.dataset.action);
-  executeBuy(btn);
-});
-
-tradeTypeEl.addEventListener("change", renderControls);
-[stakeEl, durationEl, durationUnitEl].forEach((el) => {
-  el.addEventListener("input", () => { resetQuote(); scheduleQuote(); });
-  el.addEventListener("change", () => { resetQuote(); scheduleQuote(); });
+tradeTypeEl.addEventListener("change", () => {
+  if (activeAccumulator) {
+    showResult("Close the active accumulator before changing trade type.", "error");
+    tradeTypeEl.value = "accumulators";
+    return;
+  }
+  renderControls();
 });
 
 document.addEventListener("algotrade:symbol-selected", (e) => {
+  // Never leave an active accumulator attached to a different market.
+  if (activeAccumulator) {
+    showResult("An accumulator is active. Close it before switching markets.", "error");
+    return;
+  }
   tradePanelEl.classList.remove("hidden");
   miniMarketEl.textContent = e.detail.symbol;
   resetQuote();
   scheduleQuote();
 });
 
-// Initial state: Accumulators, matching the requested default terminal mode.
+document.addEventListener("algotrade:account-ready", () => {
+  ensureTradeLayout();
+});
+
+ensureTradeLayout();
 tradeTypeEl.value = "accumulators";
 renderControls();
