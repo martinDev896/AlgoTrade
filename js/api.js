@@ -89,14 +89,28 @@ class DerivConnection {
    */
   subscribe(request, onUpdate) {
     const reqId = ++this.reqId;
-    this.subscriptions.set(reqId, onUpdate);
+    let subscriptionId = null;
+
+    const wrappedUpdate = (data) => {
+      if (data?.subscription?.id) subscriptionId = data.subscription.id;
+      onUpdate(data);
+    };
+
+    this.subscriptions.set(reqId, wrappedUpdate);
     this.pending.set(reqId, { resolve: () => {}, reject: () => {} });
     this.ws.send(JSON.stringify({ ...request, subscribe: 1, req_id: reqId }));
 
     return async () => {
       this.subscriptions.delete(reqId);
+      this.pending.delete(reqId);
       try {
-        await this.send({ forget_all: request.balance ? "balance" : "ticks" });
+        if (subscriptionId) {
+          await this.send({ forget: subscriptionId });
+        } else if (request.balance) {
+          await this.send({ forget_all: "balance" });
+        } else if (request.ticks) {
+          await this.send({ forget_all: "ticks" });
+        }
       } catch (_) { /* best effort */ }
     };
   }
