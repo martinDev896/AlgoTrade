@@ -11,30 +11,17 @@
 </head>
 <body>
 
-  <header class="topbar">
-    <div class="topbar-left">
-      <div class="brand">
-        <span class="brand-mark">◈</span>
-        <span class="brand-name">AlgoTrade</span>
-      </div>
-      <nav id="app-tabs" class="app-tabs hidden">
-        <button class="app-tab active" data-tab="manual-trader">Manual Trader</button>
-        <button class="app-tab" data-tab="copy-trading">Copy Trading</button>
-        <button class="app-tab" data-tab="bot-builder">Bot Builder</button>
-      </nav>
-    </div>
-
-    <div class="topbar-right">
-      <div id="balance-widget" class="balance-widget hidden">
-        <select id="account-switcher" class="account-switcher"></select>
-        <span id="balance-amount" class="balance-amount">—</span>
-        <button id="disconnect-btn" class="btn-disconnect" title="Disconnect">⏻</button>
-      </div>
-      <div id="connection-pill" class="pill pill-offline">
-        <span class="dot"></span> Not connected
-      </div>
-    </div>
-  </header>
+  <header class="topbar topbar-main">
+  <div class="brand">◈ <span>AlgoTrade</span></div>
+  <div class="account-balance" id="account-balance">— USD</div>
+</header>
+<header class="topbar topbar-nav">
+  <nav class="nav-tabs" aria-label="Primary navigation">
+    <button class="nav-tab active" data-tab="manual">Manual Trader</button>
+    <button class="nav-tab" data-tab="copy">Copy Trading</button>
+    <button class="nav-tab" data-tab="bot">Bot Builder</button>
+  </nav>
+</header>
 
   <main>
 
@@ -59,40 +46,30 @@
       <div id="tab-manual-trader" class="tab-panel">
         <div class="trader-workspace">
 
-          <!-- ---- Full-width chart workspace ---- -->
+          <!-- ---- Markets sidebar ---- -->
+          <aside class="markets-sidebar">
+            <input id="market-search" type="search" placeholder="Search markets…" class="market-search" />
+            <div id="market-tabs" class="market-tabs">
+              <!-- category tabs injected here -->
+            </div>
+            <div id="market-list" class="market-list">
+              <p class="market-loading">Loading markets…</p>
+            </div>
+          </aside>
+
+          <!-- ---- Chart + digits ---- -->
           <div class="chart-area">
-            <div class="chart-toolbar">
-              <div class="market-selector" id="market-selector">
-                <button id="market-selector-btn" class="market-selector-btn" type="button" aria-expanded="false">
-                  <span class="market-selector-copy">
-                    <span id="price-symbol-name" class="price-symbol-name">Volatility 100 (1s)</span>
-                    <span id="price-symbol-code" class="price-symbol-code">1HZ100V</span>
-                  </span>
-                  <span class="market-selector-chevron">⌄</span>
-                </button>
-                <div id="market-dropdown" class="market-dropdown hidden">
-                  <div class="market-dropdown-head">
-                    <strong>Select market</strong>
-                    <span id="market-count" class="market-count">—</span>
-                  </div>
-                  <input id="market-search" type="search" placeholder="Search markets…" class="market-search" />
-                  <div id="market-tabs" class="market-tabs">
-                    <!-- category tabs injected here -->
-                  </div>
-                  <div id="market-list" class="market-list">
-                    <p class="market-loading">Loading markets…</p>
-                  </div>
-                </div>
+            <div id="price-strip" class="price-strip hidden">
+              <div>
+                <span id="price-symbol-name" class="price-symbol-name">—</span>
+                <span id="price-symbol-code" class="price-symbol-code">—</span>
               </div>
-
-              <div class="chart-price-display">
-                <span id="price-value" class="price-value">—</span>
-              </div>
-
-              <button id="chart-expand-btn" class="chart-tool-btn" type="button" title="Fullscreen chart">⛶</button>
+              <div id="price-value" class="price-value">—</div>
             </div>
 
-            <div id="chart-container" class="chart-container"></div>
+            <div id="chart-container" class="chart-container">
+              <p class="chart-placeholder">Pick a market to load its chart.</p>
+            </div>
 
             <div id="digits-widget" class="digits-widget hidden">
               <p class="digits-label">Last digit distribution — last 1,000 ticks</p>
@@ -102,38 +79,38 @@
             </div>
           </div>
 
-          <!-- ---- Dynamic trade panel ---- -->
+          <!-- ---- Trade panel ---- -->
           <div class="trade-panel-wrapper">
-            <div id="trade-panel" class="trade-panel">
-              <div class="trade-panel-heading">
-                <div>
-                  <span class="trade-kicker">TRADE</span>
-                  <h3 id="trade-panel-title">Accumulators</h3>
-                </div>
-                <span id="trade-market-mini" class="trade-market-mini">1HZ100V</span>
+            <div id="trade-panel" class="trade-panel hidden">
+              <h3>Place a trade</h3>
+
+              <div class="trade-type-tabs">
+                <button class="trade-type-tab active" data-group="rise_fall">Rise/Fall</button>
+                <button class="trade-type-tab" data-group="digits">Digits</button>
               </div>
 
-              <label class="trade-field-label" for="trade-type-select">Contract type</label>
-              <select id="trade-type-select" class="trade-select trade-type-select">
-                <option value="accumulators">Accumulators</option>
-                <option value="rise_fall">Rise / Fall</option>
-                <option value="higher_lower">Higher / Lower</option>
-                <option value="touch_no_touch">Touch / No Touch</option>
-                <option value="multipliers">Multipliers</option>
-                <option value="digits">Digits</option>
-              </select>
+              <div id="rise-fall-row" class="trade-direction-row">
+                <button class="btn-direction btn-rise active" data-contract="CALL">▲ Rise</button>
+                <button class="btn-direction btn-fall" data-contract="PUT">▼ Fall</button>
+              </div>
 
-              <div id="contract-controls" class="contract-controls">
-                <!-- injected by trade.js -->
+              <div id="trade-digit-row" class="trade-direction-row hidden">
+                <select id="digit-contract-select" class="trade-select">
+                  <option value="DIGITMATCH">Matches</option>
+                  <option value="DIGITDIFF">Differs</option>
+                  <option value="DIGITOVER">Over</option>
+                  <option value="DIGITUNDER">Under</option>
+                </select>
+                <select id="trade-digit" class="trade-select"></select>
               </div>
 
               <div class="trade-row trade-row-split">
                 <div>
-                  <label for="trade-duration">Duration</label>
+                  <label>Duration</label>
                   <input id="trade-duration" type="number" min="1" value="5" class="trade-input" />
                 </div>
                 <div>
-                  <label for="trade-duration-unit">Unit</label>
+                  <label>Unit</label>
                   <select id="trade-duration-unit" class="trade-select">
                     <option value="t">Ticks</option>
                     <option value="s">Seconds</option>
@@ -143,23 +120,22 @@
               </div>
 
               <div class="trade-row">
-                <label for="trade-stake">Stake</label>
+                <label>Stake</label>
                 <input id="trade-stake" type="number" min="0.35" step="0.01" value="1" class="trade-input" />
               </div>
 
-              <div id="trade-quote-result" class="trade-quote trade-live-quote hidden">
+              <button id="trade-quote-btn" class="btn-quote">Get price</button>
+
+              <div id="trade-quote-result" class="trade-quote hidden">
+                <div class="trade-quote-row">
+                  <span>Payout</span>
+                  <span id="trade-payout">—</span>
+                </div>
                 <div class="trade-quote-row">
                   <span>Cost</span>
-                  <strong id="trade-cost">—</strong>
+                  <span id="trade-cost">—</span>
                 </div>
-                <div class="trade-quote-row">
-                  <span>Potential payout</span>
-                  <strong id="trade-payout">—</strong>
-                </div>
-              </div>
-
-              <div id="trade-actions" class="trade-actions">
-                <!-- injected by trade.js -->
+                <button id="trade-buy-btn" class="btn-buy">Buy</button>
               </div>
 
               <div id="trade-result" class="trade-result hidden"></div>
@@ -203,5 +179,60 @@
   <script src="js/chart.js"></script>
   <script src="js/digits.js"></script>
   <script src="js/trade.js"></script>
+<aside class="trade-panel" id="trade-panel">
+  <div class="trade-header">
+    <div>
+      <div class="eyebrow">TRADE</div>
+      <h2 id="trade-title">Rise / Fall</h2>
+    </div>
+    <span class="symbol-badge" id="trade-symbol">1HZ100V</span>
+  </div>
+
+  <label class="field-label" for="contract-type">Contract type</label>
+  <select id="contract-type" class="field-control">
+    <option value="rise_fall">Rise / Fall</option>
+    <option value="accumulators">Accumulators</option>
+    <option value="higher_lower">Higher / Lower</option>
+    <option value="touch_no_touch">Touch / No Touch</option>
+    <option value="multipliers">Multipliers</option>
+    <option value="digits">Digits</option>
+  </select>
+
+  <div id="dynamic-trade-controls" class="dynamic-trade-controls"></div>
+
+  <div class="field-row" id="duration-row">
+    <div>
+      <label class="field-label" for="duration">Duration</label>
+      <input id="duration" class="field-control" type="number" min="1" value="5">
+    </div>
+    <div>
+      <label class="field-label" for="duration-unit">Unit</label>
+      <select id="duration-unit" class="field-control">
+        <option value="t">Ticks</option>
+        <option value="s">Seconds</option>
+        <option value="m">Minutes</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="field" id="stake-field">
+    <label class="field-label" for="stake">Stake</label>
+    <input id="stake" class="field-control" type="number" min="1" step="0.01" value="1">
+  </div>
+
+  <div id="take-profit-field" class="field hidden">
+    <label class="field-label" for="take-profit">Take profit <span class="optional">Optional</span></label>
+    <input id="take-profit" class="field-control" type="number" min="0" step="0.01" placeholder="Optional">
+    <div class="field-note">Max payout — $6,000.00 USD</div>
+  </div>
+
+  <div id="payout-info" class="payout-info">
+    <span>Payout</span>
+    <strong id="payout-value">—</strong>
+  </div>
+
+  <div id="trade-actions" class="trade-actions"></div>
+  <div id="trade-status" class="trade-status hidden" role="status"></div>
+</aside>
 </body>
 </html>
