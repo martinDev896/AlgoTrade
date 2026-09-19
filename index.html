@@ -11,17 +11,30 @@
 </head>
 <body>
 
-  <header class="topbar topbar-main">
-  <div class="brand">◈ <span>AlgoTrade</span></div>
-  <div class="account-balance" id="account-balance">— USD</div>
-</header>
-<header class="topbar topbar-nav">
-  <nav class="nav-tabs" aria-label="Primary navigation">
-    <button class="nav-tab active" data-tab="manual">Manual Trader</button>
-    <button class="nav-tab" data-tab="copy">Copy Trading</button>
-    <button class="nav-tab" data-tab="bot">Bot Builder</button>
-  </nav>
-</header>
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="brand">
+        <span class="brand-mark">◈</span>
+        <span class="brand-name">AlgoTrade</span>
+      </div>
+      <nav id="app-tabs" class="app-tabs hidden">
+        <button class="app-tab active" data-tab="manual-trader">Manual Trader</button>
+        <button class="app-tab" data-tab="copy-trading">Copy Trading</button>
+        <button class="app-tab" data-tab="bot-builder">Bot Builder</button>
+      </nav>
+    </div>
+
+    <div class="topbar-right">
+      <div id="balance-widget" class="balance-widget hidden">
+        <select id="account-switcher" class="account-switcher"></select>
+        <span id="balance-amount" class="balance-amount">—</span>
+        <button id="disconnect-btn" class="btn-disconnect" title="Disconnect">⏻</button>
+      </div>
+      <div id="connection-pill" class="pill pill-offline">
+        <span class="dot"></span> Not connected
+      </div>
+    </div>
+  </header>
 
   <main>
 
@@ -179,60 +192,5 @@
   <script src="js/chart.js"></script>
   <script src="js/digits.js"></script>
   <script src="js/trade.js"></script>
-<aside class="trade-panel" id="trade-panel">
-  <div class="trade-header">
-    <div>
-      <div class="eyebrow">TRADE</div>
-      <h2 id="trade-title">Rise / Fall</h2>
-    </div>
-    <span class="symbol-badge" id="trade-symbol">1HZ100V</span>
-  </div>
-
-  <label class="field-label" for="contract-type">Contract type</label>
-  <select id="contract-type" class="field-control">
-    <option value="rise_fall">Rise / Fall</option>
-    <option value="accumulators">Accumulators</option>
-    <option value="higher_lower">Higher / Lower</option>
-    <option value="touch_no_touch">Touch / No Touch</option>
-    <option value="multipliers">Multipliers</option>
-    <option value="digits">Digits</option>
-  </select>
-
-  <div id="dynamic-trade-controls" class="dynamic-trade-controls"></div>
-
-  <div class="field-row" id="duration-row">
-    <div>
-      <label class="field-label" for="duration">Duration</label>
-      <input id="duration" class="field-control" type="number" min="1" value="5">
-    </div>
-    <div>
-      <label class="field-label" for="duration-unit">Unit</label>
-      <select id="duration-unit" class="field-control">
-        <option value="t">Ticks</option>
-        <option value="s">Seconds</option>
-        <option value="m">Minutes</option>
-      </select>
-    </div>
-  </div>
-
-  <div class="field" id="stake-field">
-    <label class="field-label" for="stake">Stake</label>
-    <input id="stake" class="field-control" type="number" min="1" step="0.01" value="1">
-  </div>
-
-  <div id="take-profit-field" class="field hidden">
-    <label class="field-label" for="take-profit">Take profit <span class="optional">Optional</span></label>
-    <input id="take-profit" class="field-control" type="number" min="0" step="0.01" placeholder="Optional">
-    <div class="field-note">Max payout — $6,000.00 USD</div>
-  </div>
-
-  <div id="payout-info" class="payout-info">
-    <span>Payout</span>
-    <strong id="payout-value">—</strong>
-  </div>
-
-  <div id="trade-actions" class="trade-actions"></div>
-  <div id="trade-status" class="trade-status hidden" role="status"></div>
-</aside>
 </body>
 </html>
