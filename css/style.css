@@ -581,7 +581,7 @@ footer {
   align-items: start;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 1200px) {
   .trader-workspace {
     grid-template-columns: 1fr;
   }
