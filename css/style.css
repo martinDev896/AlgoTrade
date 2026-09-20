@@ -862,4 +862,104 @@ footer {
 }
 
 .btn-buy-green { background: var(--rise); }
-.btn-buy-red { backgrou
+.btn-buy-red { background: var(--fall); }
+
+/* ---------- Misc row helpers reused by the rebuilt trade panel ---------- */
+
+.trade-row {
+  margin-bottom: 0.9rem;
+}
+
+.trade-row label {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--text-lo);
+  margin-bottom: 0.3rem;
+}
+
+.trade-row-split {
+  display: flex;
+  gap: 0.6rem;
+}
+.trade-row-split > div { flex: 1; }
+
+.trade-input, .trade-select {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--text-hi);
+  padding: 0.55rem 0.7rem;
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 0.88rem;
+}
+
+.trade-quote {
+  margin-top: 0.9rem;
+  border-top: 1px dashed var(--line);
+  padding-top: 0.9rem;
+}
+
+.trade-quote-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.88rem;
+  margin-bottom: 0.4rem;
+  color: var(--text-lo);
+}
+
+.trade-result {
+  margin-top: 0.8rem;
+  font-size: 0.85rem;
+  color: var(--text-lo);
+}
+
+.trade-error {
+  color: var(--fall);
+  font-size: 0.82rem;
+}
+
+/* ==========================================================
+   Navbar restructure: light header, tabs + balance widget inline
+   ========================================================== */
+
+.topbar {
+  background: #FFFFFF;
+  border-bottom: 1px solid #E4E7EB;
+  color: #1A1D22;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.topbar .brand-name { color: #1A1D22; }
+
+.topbar .app-tabs {
+  margin: 0;
+  border-bottom: none;
+}
+
+.topbar .app-tab {
+  color: #6B7280;
+  padding: 0.4rem 0.1rem;
+}
+
+.topbar .app-tab.active {
+  color: #9A6B12;
+}
+
+/* ---------- Balance widget ---------- */
+
+.bal
