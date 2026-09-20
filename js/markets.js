@@ -105,6 +105,18 @@ function renderList() {
   });
 }
 
+function renderLivePrice(quote) {
+  const raw = String(quote ?? "");
+  if (!raw) {
+    priceValueEl.textContent = "—";
+    return;
+  }
+
+  const lastChar = raw.slice(-1);
+  const prefix = raw.slice(0, -1);
+  priceValueEl.innerHTML = `${prefix}<span class="price-last-digit">${lastChar}</span>`;
+}
+
 function selectSymbol(symbol, displayName) {
   if (!symbol) return;
 
@@ -123,7 +135,9 @@ function selectSymbol(symbol, displayName) {
   renderList();
 
   AppState.unsubscribeTicks = derivAPI.subscribe({ ticks: symbol }, (data) => {
-    if (data.tick) priceValueEl.textContent = data.tick.quote;
+    if (data.tick) {
+      renderLivePrice(data.tick.quote);
+    }
   });
 
   document.dispatchEvent(new CustomEvent("algotrade:symbol-selected", {
