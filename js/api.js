@@ -18,6 +18,7 @@ class DerivConnection {
     this.reqId = 0;
     this.pending = new Map();       // req_id -> {resolve, reject}
     this.subscriptions = new Map(); // req_id -> callback (for streamed data)
+    this.subscriptionIds = new Map(); // req_id -> Deriv subscription.id
     this.connectPromise = null;
     this.currentUrl = null;         // so we can reconnect to the same OTP URL
     this.onStatusChange = null;     // optional external hook, e.g. update the UI pill
@@ -54,6 +55,10 @@ class DerivConnection {
 
   _handleMessage(event) {
     const data = JSON.parse(event.data);
+
+    if (data.req_id !== undefined && data.subscription?.id) {
+      this.subscriptionIds.set(data.req_id, data.subscription.id);
+    }
 
     if (data.req_id !== undefined) {
       if (this.subscriptions.has(data.req_id)) {
@@ -95,13 +100,24 @@ class DerivConnection {
 
     return async () => {
       this.subscriptions.delete(reqId);
+      this.pending.delete(reqId);
+      const subscriptionId = this.subscriptionIds.get(reqId);
+      this.subscriptionIds.delete(reqId);
+
+      if (!subscriptionId) return;
+
       try {
-        await this.send({ forget_all: request.balance ? "balance" : "ticks" });
+        // Forget only this subscription. Using forget_all here causes the
+        // price, chart, and digit streams to cancel one another.
+        await this.send({ forget: subscriptionId });
       } catch (_) { /* best effort */ }
     };
   }
 
   close() {
+    this.subscriptions.clear();
+    this.subscriptionIds.clear();
+    this.pending.clear();
     if (this.ws) this.ws.close();
   }
 }
