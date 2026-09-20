@@ -260,6 +260,9 @@ function init() {
 }
 
 // ---------- Event listeners ----------
+// Mark the auth click handlers as installed so the non-sensitive bootstrap
+// guard can detect a partially loaded/cached Auth.js without duplicating them.
+window.__ALGO_TRADE_AUTH_BOUND__ = true;
 connectBtn.addEventListener("click", redirectToDerivOAuth);
 retryBtn.addEventListener("click", redirectToDerivOAuth);
 
