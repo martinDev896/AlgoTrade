@@ -962,4 +962,117 @@ footer {
 
 /* ---------- Balance widget ---------- */
 
-.bal
+.balance-widget {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #F5F6F8;
+  border: 1px solid #E4E7EB;
+  border-radius: 999px;
+  padding: 0.35rem 0.5rem 0.35rem 0.9rem;
+}
+
+.account-switcher {
+  background: transparent;
+  border: none;
+  color: #6B7280;
+  font-size: 0.78rem;
+  font-family: inherit;
+}
+
+.balance-amount {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: #1A1D22;
+}
+
+.btn-disconnect {
+  background: #FFFFFF;
+  border: 1px solid #E4E7EB;
+  color: #8A93A1;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.btn-disconnect:hover {
+  border-color: var(--fall);
+  color: var(--fall);
+}
+
+.topbar .pill-offline { color: #9096A2; border-color: #E4E7EB; }
+.topbar .pill-online { color: var(--rise); border-color: rgba(46,204,143,0.35); }
+
+/* ==========================================================
+   App light mode — once connected, the whole trading surface
+   (sidebar, chart area, trade panel, tabs) switches to a light
+   theme to match Deriv's own DTrader look. Because most components
+   are built on these shared custom properties, redefining them
+   here re-themes the app without touching every rule individually.
+   ========================================================== */
+
+body.app-light-mode {
+  --bg: #F0F2F5;
+  --panel: #FFFFFF;
+  --line: #E4E7EB;
+  --text-hi: #1A1D22;
+  --text-lo: #6B7280;
+}
+
+body.app-light-mode .account-panel .btn-select,
+body.app-light-mode .trade-select,
+body.app-light-mode .trade-input {
+  background: #FFFFFF;
+}
+
+/* ==========================================================
+   REDESIGN 1 — FULL-WIDTH TRADING TERMINAL
+   ========================================================== */
+
+.trader-workspace {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.account-panel { max-width: none; }
+
+.chart-area {
+  position: relative;
+  min-width: 0;
+  height: calc(100vh - 92px);
+  min-height: 620px;
+  background: #fff;
+  border: 1px solid #e2e6ea;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.chart-toolbar {
+  position: absolute;
+  z-index: 20;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.chart-toolbar > * { pointer-events: auto; }
+
+.market-selector { position: relative; }
+
+.market-selector-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 230px;
+  padding: 9px 12px;
+  border: 1px solid rgba(30, 35, 42, 
