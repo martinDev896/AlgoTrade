@@ -26,9 +26,9 @@ import { readStoredLanguage } from '@/lib/i18n';
 
 function getAuthConfig(lang?: string): AuthConfig {
   const config: AuthConfig = {
-    clientId: process.env.NEXT_PUBLIC_DERIV_APP_ID ?? '',
+    clientId: process.env.33Rch7JPS36kkSKC2iDDt ?? '',
     redirectUri:
-      process.env.NEXT_PUBLIC_DERIV_REDIRECT_URI ??
+      process.env.https://martindev896.github.io/AlgoTrade/ ??
       (typeof window !== 'undefined' ? window.location.origin : ''),
   };
 
@@ -40,7 +40,7 @@ function getAuthConfig(lang?: string): AuthConfig {
   }
 
   // Convert comma-separated scopes to space-separated (OAuth spec)
-  const scopesEnv = process.env.NEXT_PUBLIC_DERIV_OAUTH_SCOPES ?? '';
+  const scopesEnv = process.env.trade,account_manage ?? '';
   if (scopesEnv) {
     config.scopes = scopesEnv
       .split(',')
