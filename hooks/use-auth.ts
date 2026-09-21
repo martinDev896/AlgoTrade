@@ -26,9 +26,9 @@ import { readStoredLanguage } from '@/lib/i18n';
 
 function getAuthConfig(lang?: string): AuthConfig {
   const config: AuthConfig = {
-    clientId: process.env.33Rch7JPS36kkSKC2iDDt ?? '',
+    clientId: process.env.NEXT_PUBLIC_DERIV_APP_ID ?? '',
     redirectUri:
-      process.env.https://martindev896.github.io/AlgoTrade/ ??
+      process.env.NEXT_PUBLIC_DERIV_REDIRECT_URI ??
       (typeof window !== 'undefined' ? window.location.origin : ''),
   };
 
