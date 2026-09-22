@@ -586,7 +586,7 @@ footer {
   width: 100%;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1500px) {
   .trader-workspace {
     grid-template-columns: minmax(0, 1fr);
   }
