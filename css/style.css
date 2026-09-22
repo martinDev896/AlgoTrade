@@ -34,6 +34,8 @@ html, body {
   color: var(--text-hi);
   font-family: 'Inter', system-ui, sans-serif;
   min-height: 100vh;
+  max-width: 100vw;
+  overflow-x: hidden;
 }
 
 body {
@@ -405,7 +407,9 @@ main {
   border: 1px solid var(--gold);
   border-radius: 10px;
   padding: 0.9rem 1.1rem;
-  margin-top: 1rem;
+  margin: 0;
+  color: inherit;
+  font-size: 1rem;
 }
 
 .price-symbol-name {
@@ -576,36 +580,55 @@ footer {
 
 .trader-workspace {
   display: grid;
-  grid-template-columns: 240px 1fr 300px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 300px);
   gap: 1rem;
   align-items: start;
+  width: 100%;
 }
 
-@media (max-width: 980px) {
+@media (max-width: 900px) {
   .trader-workspace {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
 /* ---------- Light "trading surface" shared look ---------- */
 
-.markets-sidebar,
 .chart-area {
   background: #FFFFFF;
   border-radius: 12px;
   border: 1px solid #E4E7EB;
   color: #1A1D22;
+  min-width: 0; /* grid/flex children don't shrink below content size by default — this is what was causing the page-wide horizontal scrollbar */
 }
 
-.markets-sidebar {
+.trade-panel-wrapper {
+  min-width: 0;
+}
+
+/* ---------- Market selector dropdown (floats inside the chart area) ---------- */
+
+.market-dropdown-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 0.4rem;
+  width: min(360px, 92vw);
+  max-height: 60vh;
+  background: #FFFFFF;
+  border: 1px solid #E4E7EB;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px -8px rgba(0,0,0,0.18);
   padding: 0.9rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  max-height: 620px;
+  z-index: 20;
 }
 
-.markets-sidebar .market-search {
+.market-dropdown-panel.hidden { display: none; }
+
+.market-dropdown-panel .market-search {
   background: #F5F6F8;
   border: 1px solid #E4E7EB;
   color: #1A1D22;
@@ -613,47 +636,46 @@ footer {
   width: 100%;
 }
 
-.markets-sidebar .market-search::placeholder { color: #9096A2; }
+.market-dropdown-panel .market-search::placeholder { color: #9096A2; }
 
-.markets-sidebar .market-tabs {
+.market-dropdown-panel .market-tabs {
   margin-bottom: 0;
 }
 
-.markets-sidebar .tab-btn {
+.market-dropdown-panel .tab-btn {
   border-color: #E4E7EB;
   color: #6B7280;
 }
 
-.markets-sidebar .tab-btn.active {
+.market-dropdown-panel .tab-btn.active {
   border-color: var(--gold);
   color: #9A6B12;
   background: rgba(212,169,74,0.1);
 }
 
-.markets-sidebar .market-list {
-  max-height: none;
-  flex: 1;
+.market-dropdown-panel .market-list {
+  max-height: 320px;
   overflow-y: auto;
 }
 
-.markets-sidebar .market-item {
+.market-dropdown-panel .market-item {
   background: #F9FAFB;
   border-color: #E4E7EB;
   color: #1A1D22;
 }
 
-.markets-sidebar .market-item.active {
+.market-dropdown-panel .market-item.active {
   border-color: var(--gold);
   background: rgba(212,169,74,0.08);
 }
 
-.markets-sidebar .market-item-sub {
+.market-dropdown-panel .market-item-sub {
   color: #8A93A1;
 }
 
-.markets-sidebar .market-loading,
-.markets-sidebar .market-error,
-.markets-sidebar .market-empty {
+.market-dropdown-panel .market-loading,
+.market-dropdown-panel .market-error,
+.market-dropdown-panel .market-empty {
   color: #8A93A1;
 }
 
@@ -664,7 +686,8 @@ footer {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  min-height: 480px;
+  min-height: 620px;
+  position: relative; /* anchors the floating market-dropdown-panel */
 }
 
 .chart-area .price-strip {
@@ -675,9 +698,31 @@ footer {
 .chart-area .price-symbol-name { color: #1A1D22; }
 .chart-area .price-symbol-code { color: #6B7280; }
 
+.market-selector-btn {
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  text-align: left;
+  width: 100%;
+  align-self: stretch;
+}
+
+.market-selector-btn:hover { border-color: var(--gold-hi); }
+
+.selector-chevron {
+  display: inline-block;
+  margin-left: 0.4rem;
+  color: #9096A2;
+  transition: transform 0.15s ease;
+}
+
+.market-selector-btn.open .selector-chevron {
+  transform: rotate(180deg);
+}
+
 .chart-container {
   flex: 1;
-  min-height: 320px;
+  min-height: 460px;
   border-radius: 8px;
   overflow: hidden;
   position: relative;
@@ -706,9 +751,18 @@ footer {
 }
 
 .digits-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
   gap: 0.4rem;
-  justify-content: space-between;
+}
+
+/* Below this width, 5 columns means the same 10 digit-cells wrap into
+   two rows automatically — row 1 is 0-4, row 2 is 5-9 — no JS needed. */
+@media (max-width: 640px) {
+  .digits-row {
+    grid-template-columns: repeat(5, 1fr);
+    row-gap: 1.1rem;
+  }
 }
 
 .digit-cell {
@@ -717,7 +771,7 @@ footer {
   flex-direction: column;
   align-items: center;
   gap: 0.2rem;
-  flex: 1;
+  min-width: 0;
 }
 
 .digit-ring {
@@ -754,23 +808,14 @@ footer {
 
 .digit-cursor {
   position: absolute;
-  bottom: -8px;
-  width: 18px;
-  height: 5px;
-  border-radius: 3px;
-  background: var(--rise);
+  bottom: -9px;
   left: 50%;
   transform: translateX(-50%);
-}
-
-@media (max-width: 480px) {
-  .digits-row {
-    flex-wrap: wrap;
-  }
-  .digit-cell {
-    flex: 0 0 20%;
-    margin-bottom: 0.9rem;
-  }
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 8px solid var(--rise);
 }
 
 /* ---------- Trade panel: direction buttons + colored actions ---------- */
