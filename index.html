@@ -59,29 +59,29 @@
       <div id="tab-manual-trader" class="tab-panel">
         <div class="trader-workspace">
 
-          <!-- ---- Markets sidebar ---- -->
-          <aside class="markets-sidebar">
-            <input id="market-search" type="search" placeholder="Search markets…" class="market-search" />
-            <div id="market-tabs" class="market-tabs">
-              <!-- category tabs injected here -->
-            </div>
-            <div id="market-list" class="market-list">
-              <p class="market-loading">Loading markets…</p>
-            </div>
-          </aside>
-
-          <!-- ---- Chart + digits ---- -->
+          <!-- ---- Chart + floating market selector + digits ---- -->
           <div class="chart-area">
-            <div id="price-strip" class="price-strip hidden">
+            <button id="market-selector-btn" class="price-strip market-selector-btn">
               <div>
-                <span id="price-symbol-name" class="price-symbol-name">—</span>
-                <span id="price-symbol-code" class="price-symbol-code">—</span>
+                <span id="price-symbol-name" class="price-symbol-name">Loading…</span>
+                <span id="price-symbol-code" class="price-symbol-code"></span>
+                <span class="selector-chevron">▾</span>
               </div>
               <div id="price-value" class="price-value">—</div>
+            </button>
+
+            <div id="market-dropdown-panel" class="market-dropdown-panel hidden">
+              <input id="market-search" type="search" placeholder="Search markets…" class="market-search" />
+              <div id="market-tabs" class="market-tabs">
+                <!-- category tabs injected here -->
+              </div>
+              <div id="market-list" class="market-list">
+                <p class="market-loading">Loading markets…</p>
+              </div>
             </div>
 
             <div id="chart-container" class="chart-container">
-              <p class="chart-placeholder">Pick a market to load its chart.</p>
+              <p class="chart-placeholder">Loading chart…</p>
             </div>
 
             <div id="digits-widget" class="digits-widget hidden">
