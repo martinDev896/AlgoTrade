@@ -18,12 +18,38 @@ window.AppState.unsubscribeTicks = null;
 const marketTabsEl = document.getElementById("market-tabs");
 const marketListEl = document.getElementById("market-list");
 const marketSearchEl = document.getElementById("market-search");
-const priceStripEl = document.getElementById("price-strip");
+const priceStripEl = document.getElementById("market-selector-btn");
 const priceSymbolNameEl = document.getElementById("price-symbol-name");
 const priceSymbolCodeEl = document.getElementById("price-symbol-code");
 const priceValueEl = document.getElementById("price-value");
+const marketDropdownEl = document.getElementById("market-dropdown-panel");
+
+// The symbol we auto-select on load, before the user picks anything.
+const DEFAULT_SYMBOL_NAME = "Volatility 100 (1s) Index";
 
 let symbolsLoaded = false;
+
+function openMarketDropdown() {
+  marketDropdownEl.classList.remove("hidden");
+  priceStripEl.classList.add("open");
+}
+
+function closeMarketDropdown() {
+  marketDropdownEl.classList.add("hidden");
+  priceStripEl.classList.remove("open");
+}
+
+priceStripEl.addEventListener("click", () => {
+  const isOpen = !marketDropdownEl.classList.contains("hidden");
+  isOpen ? closeMarketDropdown() : openMarketDropdown();
+});
+
+// Click-outside-to-close
+document.addEventListener("click", (e) => {
+  if (!marketDropdownEl.contains(e.target) && !priceStripEl.contains(e.target)) {
+    closeMarketDropdown();
+  }
+});
 
 // "synthetic_index" -> "Synthetic Index", "major_pairs" -> "Major Pairs"
 function titleCase(rawCode) {
@@ -55,6 +81,15 @@ async function loadMarkets() {
 
     renderTabs();
     renderList();
+
+    const defaultSymbol =
+      AppState.allSymbols.find((s) => s.displayName === DEFAULT_SYMBOL_NAME) ||
+      AppState.allSymbols.find((s) => s.marketCode === "synthetic_index") ||
+      AppState.allSymbols[0];
+
+    if (defaultSymbol) {
+      selectSymbol(defaultSymbol.symbol, defaultSymbol.displayName);
+    }
   } catch (err) {
     marketListEl.innerHTML = `<p class="market-error">Couldn't load markets: ${err.message}</p>`;
   }
@@ -127,8 +162,8 @@ function selectSymbol(symbol, displayName) {
 
   AppState.selectedSymbol = symbol;
   renderList();
+  closeMarketDropdown();
 
-  priceStripEl.classList.remove("hidden");
   priceSymbolNameEl.textContent = displayName;
   priceSymbolCodeEl.textContent = symbol;
   priceValueEl.textContent = "…";
