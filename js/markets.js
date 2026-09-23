@@ -154,6 +154,12 @@ function renderList() {
   });
 }
 
+function decimalPlacesFor(pipSize) {
+  const str = String(pipSize);
+  const dot = str.indexOf(".");
+  return dot === -1 ? 0 : str.length - dot - 1;
+}
+
 function selectSymbol(symbol, displayName) {
   if (AppState.unsubscribeTicks) {
     AppState.unsubscribeTicks();
@@ -163,6 +169,9 @@ function selectSymbol(symbol, displayName) {
   AppState.selectedSymbol = symbol;
   renderList();
   closeMarketDropdown();
+
+  const meta = AppState.allSymbols.find((s) => s.symbol === symbol);
+  const decimals = meta ? decimalPlacesFor(meta.pipSize) : 2;
 
   priceSymbolNameEl.textContent = displayName;
   priceSymbolCodeEl.textContent = symbol;
@@ -178,7 +187,10 @@ function selectSymbol(symbol, displayName) {
   // they listen for the "algotrade:tick" event broadcast below.
   AppState.unsubscribeTicks = derivAPI.subscribe({ ticks: symbol }, (data) => {
     if (data.tick) {
-      priceValueEl.textContent = data.tick.quote;
+      // .toFixed() — Deriv sends the quote as a plain number, so a
+      // trailing zero (e.g. 705.30) gets silently dropped by JS unless
+      // we format it to the market's actual decimal precision.
+      priceValueEl.textContent = Number(data.tick.quote).toFixed(decimals);
       document.dispatchEvent(
         new CustomEvent("algotrade:tick", { detail: { symbol, quote: data.tick.quote } })
       );
