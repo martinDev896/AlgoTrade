@@ -33,42 +33,64 @@ function computeCounts() {
   return counts;
 }
 
+let cellRefs = []; // persistent references to each digit's DOM pieces
+
+function buildDigitCells() {
+  digitsRowEl.innerHTML = "";
+  cellRefs = [];
+
+  for (let d = 0; d <= 9; d++) {
+    const cell = document.createElement("div");
+    cell.className = "digit-cell";
+    cell.innerHTML = `
+      <svg viewBox="0 0 44 44" class="digit-ring">
+        <circle cx="22" cy="22" r="18" class="digit-ring-bg" />
+        <circle cx="22" cy="22" r="18" class="digit-ring-fg" transform="rotate(-90 22 22)" />
+        <text x="22" y="27" class="digit-ring-text">${d}</text>
+      </svg>
+      <span class="digit-pct">0.0%</span>
+      <span class="digit-cursor hidden"></span>
+    `;
+    digitsRowEl.appendChild(cell);
+    cellRefs.push({
+      root: cell,
+      ringFg: cell.querySelector(".digit-ring-fg"),
+      pct: cell.querySelector(".digit-pct"),
+      cursor: cell.querySelector(".digit-cursor"),
+    });
+  }
+}
+
 function renderDigits() {
+  if (cellRefs.length !== 10) buildDigitCells();
+
   const total = digitHistory.length || 1;
   const counts = computeCounts();
   const max = Math.max(...counts);
   const min = Math.min(...counts);
   const lastDigit = digitHistory.length ? digitHistory[digitHistory.length - 1] : null;
-
-  digitsRowEl.innerHTML = "";
+  const circumference = 2 * Math.PI * 18; // r=18
 
   for (let d = 0; d <= 9; d++) {
-    const pct = ((counts[d] / total) * 100);
-    const pctLabel = pct.toFixed(1);
-
-    const circumference = 2 * Math.PI * 18; // r=18
+    const pct = (counts[d] / total) * 100;
     const dashOffset = circumference - (pct / 100) * circumference;
 
     const isMax = counts[d] === max && max !== min;
     const isMin = counts[d] === min && max !== min;
     const ringColor = isMax ? "#2ECC8F" : isMin ? "#FF5C5C" : "#D4A94A";
 
-    const cell = document.createElement("div");
-    cell.className = "digit-cell";
-    cell.innerHTML = `
-      <svg viewBox="0 0 44 44" class="digit-ring">
-        <circle cx="22" cy="22" r="18" class="digit-ring-bg" />
-        <circle cx="22" cy="22" r="18" class="digit-ring-fg"
-          stroke="${ringColor}"
-          stroke-dasharray="${circumference}"
-          stroke-dashoffset="${dashOffset}"
-          transform="rotate(-90 22 22)" />
-        <text x="22" y="27" class="digit-ring-text">${d}</text>
-      </svg>
-      <span class="digit-pct">${pctLabel}%</span>
-      ${lastDigit === d ? '<span class="digit-cursor"></span>' : ""}
-    `;
-    digitsRowEl.appendChild(cell);
+    const ref = cellRefs[d];
+    ref.ringFg.setAttribute("stroke", ringColor);
+    ref.ringFg.setAttribute("stroke-dasharray", circumference);
+    ref.ringFg.setAttribute("stroke-dashoffset", dashOffset);
+    ref.pct.textContent = `${pct.toFixed(1)}%`;
+
+    // Same DOM nodes persist across renders (not recreated), so toggling
+    // this class actually animates via the CSS transition — the zoom
+    // effect — instead of just snapping to its end state.
+    const isActive = lastDigit === d;
+    ref.root.classList.toggle("digit-cell-active", isActive);
+    ref.cursor.classList.toggle("hidden", !isActive);
   }
 }
 
