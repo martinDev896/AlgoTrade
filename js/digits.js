@@ -11,8 +11,9 @@ const digitsWidgetEl = document.getElementById("digits-widget");
 const digitsRowEl = document.getElementById("digits-row");
 
 let digitHistory = []; // rolling window of last-digit values (0-9), most recent last
-let unsubscribeDigitTicks = null;
 let currentPipSize = 0.001;
+let currentDigitsSymbol = null; // guards against stale ticks after switching markets
+let digitsActive = false;       // only synthetic indices show/track this widget
 
 function decimalPlacesFor(pipSize) {
   const str = String(pipSize);
@@ -73,12 +74,8 @@ function renderDigits() {
 
 async function loadDigitsFor(symbol, pipSize) {
   currentPipSize = pipSize || 0.001;
+  currentDigitsSymbol = symbol;
   digitHistory = [];
-
-  if (unsubscribeDigitTicks) {
-    unsubscribeDigitTicks();
-    unsubscribeDigitTicks = null;
-  }
 
   try {
     const res = await derivAPI.send({
@@ -89,30 +86,37 @@ async function loadDigitsFor(symbol, pipSize) {
     });
 
     const prices = res.history?.prices || res.prices || [];
-    digitHistory = prices.map((p) => lastDigitOf(p, currentPipSize));
-    renderDigits();
+    // Only apply this if the user hasn't already switched markets while
+    // this history request was in flight.
+    if (currentDigitsSymbol === symbol) {
+      digitHistory = prices.map((p) => lastDigitOf(p, currentPipSize));
+      renderDigits();
+    }
   } catch (err) {
     console.error("Digit history failed:", err.message);
   }
-
-  unsubscribeDigitTicks = derivAPI.subscribe({ ticks: symbol }, (data) => {
-    if (!data.tick) return;
-    digitHistory.push(lastDigitOf(data.tick.quote, currentPipSize));
-    if (digitHistory.length > 1000) digitHistory.shift();
-    renderDigits();
-  });
 }
+
+// Single shared listener for every live tick (broadcast by markets.js,
+// which owns the one real ticks subscription per symbol — see the note
+// in markets.js about why a second subscription silently fails).
+document.addEventListener("algotrade:tick", (e) => {
+  if (!digitsActive || e.detail.symbol !== currentDigitsSymbol) return;
+  digitHistory.push(lastDigitOf(e.detail.quote, currentPipSize));
+  if (digitHistory.length > 1000) digitHistory.shift();
+  renderDigits();
+});
 
 document.addEventListener("algotrade:symbol-selected", (e) => {
   const meta = AppState.allSymbols.find((s) => s.symbol === e.detail.symbol);
   const isSynthetic = meta && meta.marketCode === "synthetic_index";
 
+  digitsActive = isSynthetic;
   digitsWidgetEl.classList.toggle("hidden", !isSynthetic);
 
   if (isSynthetic) {
     loadDigitsFor(e.detail.symbol, meta.pipSize);
-  } else if (unsubscribeDigitTicks) {
-    unsubscribeDigitTicks();
-    unsubscribeDigitTicks = null;
+  } else {
+    currentDigitsSymbol = null;
   }
 });
