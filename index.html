@@ -61,22 +61,24 @@
 
           <!-- ---- Chart + floating market selector + digits ---- -->
           <div class="chart-area">
-            <button id="market-selector-btn" class="price-strip market-selector-btn">
-              <div>
-                <span id="price-symbol-name" class="price-symbol-name">Loading…</span>
-                <span id="price-symbol-code" class="price-symbol-code"></span>
-                <span class="selector-chevron">▾</span>
-              </div>
-              <div id="price-value" class="price-value">—</div>
-            </button>
+            <div class="market-selector-wrap">
+              <button id="market-selector-btn" class="price-strip market-selector-btn">
+                <div>
+                  <span id="price-symbol-name" class="price-symbol-name">Loading…</span>
+                  <span id="price-symbol-code" class="price-symbol-code"></span>
+                  <span class="selector-chevron">▾</span>
+                </div>
+                <div id="price-value" class="price-value">—</div>
+              </button>
 
-            <div id="market-dropdown-panel" class="market-dropdown-panel hidden">
-              <input id="market-search" type="search" placeholder="Search markets…" class="market-search" />
-              <div id="market-tabs" class="market-tabs">
-                <!-- category tabs injected here -->
-              </div>
-              <div id="market-list" class="market-list">
-                <p class="market-loading">Loading markets…</p>
+              <div id="market-dropdown-panel" class="market-dropdown-panel hidden">
+                <input id="market-search" type="search" placeholder="Search markets…" class="market-search" />
+                <div id="market-tabs" class="market-tabs">
+                  <!-- category tabs injected here -->
+                </div>
+                <div id="market-list" class="market-list">
+                  <p class="market-loading">Loading markets…</p>
+                </div>
               </div>
             </div>
 
