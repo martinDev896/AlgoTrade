@@ -522,7 +522,20 @@ footer {
   .digits-row { grid-template-columns: repeat(5, 1fr); row-gap: 1.1rem; }
 }
 
-.digit-cell { position: relative; display: flex; flex-direction: column; align-items: center; gap: 0.2rem; min-width: 0; }
+.digit-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+  transition: transform 0.22s ease;
+}
+
+.digit-cell-active {
+  transform: scale(1.18);
+  z-index: 2;
+}
 .digit-ring { width: 44px; height: 44px; }
 .digit-ring-bg { fill: none; stroke: #EDEFF2; stroke-width: 4; }
 .digit-ring-fg { fill: none; stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset 0.3s ease; }
