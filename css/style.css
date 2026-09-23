@@ -458,7 +458,7 @@ main {
 }
 
 .trade-row label {
-  font-size: 0.78rem;
+  font-size: 0.48rem;
   color: var(--text-lo);
 }
 
@@ -479,15 +479,15 @@ main {
   border: 1px solid var(--line);
   color: var(--text-hi);
   font-family: inherit;
-  font-size: 0.9rem;
-  padding: 0.55rem 0.7rem;
-  border-radius: 8px;
+  font-size: 0.5rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: 5px;
 }
 
 .trade-btn {
   width: 100%;
   padding: 0.75rem;
-  font-size: 0.92rem;
+  font-size: 0.62rem;
 }
 
 .trade-quote {
@@ -499,19 +499,19 @@ main {
 .trade-quote-row {
   display: flex;
   justify-content: space-between;
-  font-size: 0.88rem;
+  font-size: 0.68rem;
   margin-bottom: 0.5rem;
   font-family: 'JetBrains Mono', monospace;
 }
 
 .trade-result {
   margin-top: 1rem;
-  font-size: 0.85rem;
+  font-size: 0.55rem;
   color: var(--rise);
   background: rgba(46,204,143,0.08);
   border: 1px solid rgba(46,204,143,0.3);
-  border-radius: 8px;
-  padding: 0.75rem 0.9rem;
+  border-radius: 5px;
+  padding: 0.55rem 0.7rem;
 }
 
 .trade-result.error {
@@ -618,7 +618,7 @@ footer {
 
 .chart-area {
   background: #FFFFFF;
-  border-radius: 12px;
+  border-radius: 5px;
   border: 1px solid #E4E7EB;
   color: #1A1D22;
   min-width: 0; /* grid/flex children don't shrink below content size by default — this is what was causing the page-wide horizontal scrollbar */
@@ -646,7 +646,7 @@ footer {
   max-height: 60vh;
   background: #FFFFFF;
   border: 1px solid #E4E7EB;
-  border-radius: 12px;
+  border-radius: 7px;
   box-shadow: 0 12px 32px -8px rgba(0,0,0,0.18);
   padding: 0.9rem;
   display: flex;
@@ -711,7 +711,7 @@ footer {
 /* ---------- Chart area ---------- */
 
 .chart-area {
-  padding: 0.6rem;
+  padding: 0.4rem;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
@@ -741,7 +741,7 @@ footer {
 
 .selector-chevron {
   display: inline-block;
-  margin-left: 0.4rem;
+  margin-left: 0.25rem;
   color: #9096A2;
   transition: transform 0.15s ease;
 }
@@ -753,7 +753,7 @@ footer {
 .chart-container {
   flex: 1;
   min-height: 0;
-  border-radius: 8px;
+  border-radius: 5px;
   overflow: hidden;
   position: relative;
 }
@@ -764,14 +764,14 @@ footer {
   justify-content: center;
   height: 100%;
   color: #9096A2;
-  font-size: 0.9rem;
+  font-size: 0.55rem;
 }
 
 /* ---------- Digits widget ---------- */
 
 .digits-widget {
   border-top: 1px solid #E4E7EB;
-  padding-top: 0.75rem;
+  padding-top: 0.45rem;
 }
 
 .digits-label {
