@@ -33,7 +33,7 @@ html, body {
   background: var(--bg);
   color: var(--text-hi);
   font-family: 'Inter', system-ui, sans-serif;
-  min-height: 100vh;
+  height: 100%;
   max-width: 100vw;
   overflow-x: hidden;
 }
@@ -41,6 +41,7 @@ html, body {
 body {
   display: flex;
   flex-direction: column;
+  height: 100vh;
 }
 
 h1, h2 {
@@ -115,15 +116,16 @@ a:focus-visible {
 
 main {
   flex: 1;
+  min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   padding: 2rem 1.25rem;
 }
 
 .hero {
   max-width: 640px;
   text-align: center;
+  margin: auto;
 }
 
 .eyebrow {
@@ -193,7 +195,10 @@ main {
 
 .account-panel {
   width: 100%;
-  max-width: 720px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .panel-head {
@@ -433,11 +438,11 @@ main {
 /* ---------- Trade panel ---------- */
 
 .trade-panel {
-  margin-top: 1.25rem;
+  margin-top: 0;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 1.25rem;
+  padding: 0.9rem;
 }
 
 .trade-panel h3 {
@@ -567,6 +572,13 @@ footer {
   border-bottom-color: var(--gold);
 }
 
+.tab-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .tab-panel.hidden { display: none; }
 
 .coming-soon {
@@ -581,14 +593,24 @@ footer {
 .trader-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 300px);
-  gap: 1rem;
-  align-items: start;
+  gap: 0.75rem;
+  align-items: stretch;
   width: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
-@media (max-width: 1500px) {
+@media (max-width: 900px) {
   .trader-workspace {
     grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    overflow-y: auto;
+  }
+  .chart-area, .trade-panel-wrapper {
+    height: auto;
+  }
+  .chart-container {
+    min-height: 360px;
   }
 }
 
@@ -604,9 +626,16 @@ footer {
 
 .trade-panel-wrapper {
   min-width: 0;
+  height: 100%;
+  overflow-y: auto; /* internal fallback scroll only, never the whole page */
 }
 
 /* ---------- Market selector dropdown (floats inside the chart area) ---------- */
+
+.market-selector-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
 
 .market-dropdown-panel {
   position: absolute;
@@ -682,11 +711,12 @@ footer {
 /* ---------- Chart area ---------- */
 
 .chart-area {
-  padding: 0.9rem;
+  padding: 0.6rem;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  min-height: 620px;
+  gap: 0.6rem;
+  min-height: 0;
+  height: 100%;
   position: relative; /* anchors the floating market-dropdown-panel */
 }
 
@@ -722,7 +752,7 @@ footer {
 
 .chart-container {
   flex: 1;
-  min-height: 460px;
+  min-height: 0;
   border-radius: 8px;
   overflow: hidden;
   position: relative;
