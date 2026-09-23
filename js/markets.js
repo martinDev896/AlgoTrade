@@ -170,9 +170,18 @@ function selectSymbol(symbol, displayName) {
 
   // Note: unlike active_symbols, the ticks request/response still use
   // the plain "symbol" field name in the new API (not underlying_symbol).
+  //
+  // IMPORTANT: this is the ONLY ticks subscription for the selected symbol.
+  // Deriv's API returns an "AlreadySubscribed" error for a duplicate
+  // identical subscription on one connection — so other modules (the
+  // digits widget) must NOT open their own ticks subscription. Instead
+  // they listen for the "algotrade:tick" event broadcast below.
   AppState.unsubscribeTicks = derivAPI.subscribe({ ticks: symbol }, (data) => {
     if (data.tick) {
       priceValueEl.textContent = data.tick.quote;
+      document.dispatchEvent(
+        new CustomEvent("algotrade:tick", { detail: { symbol, quote: data.tick.quote } })
+      );
     }
   });
 
