@@ -447,7 +447,7 @@ main {
 
 .trade-panel h3 {
   margin: 0 0 1rem;
-  font-size: 1.05rem;
+  font-size: 0.5rem;
 }
 
 .trade-row {
@@ -524,9 +524,9 @@ main {
 
 footer {
   text-align: center;
-  padding: 1.25rem;
+  padding: 0.25rem;
   color: var(--text-lo);
-  font-size: 0.78rem;
+  font-size: 0.45rem;
   border-top: 1px solid var(--line);
 }
 
