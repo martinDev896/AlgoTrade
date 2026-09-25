@@ -168,7 +168,10 @@ async function buyContract(contractType, btn) {
     tradeResultEl.classList.remove("hidden");
   } finally {
     btn.querySelector(".btn-direction-label").textContent = originalLabel;
-    // The live subscription's next push will re-enable the button.
+    // Don't rely on the old subscription to push again on its own —
+    // it can go quiet right after its proposal is used to buy. Start a
+    // fresh one so the button re-enables with a current payout.
+    startLiveProposal(contractType, btn);
   }
 }
 
