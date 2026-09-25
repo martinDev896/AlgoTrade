@@ -515,7 +515,7 @@ footer {
 }
 
 .digits-widget { border-top: 1px solid #E4E7EB; padding-top: 0.45rem; }
-.digits-label { font-size: 0.78rem; color: #6B7280; margin: 0 0 0.6rem; }
+.digits-label { font-size: 0.9rem; color: #6B7280; margin: 0 0 0.6rem; }
 .digits-row { display: grid; grid-template-columns: repeat(10, 1fr); gap: 0.4rem; }
 
 @media (max-width: 640px) {
@@ -539,8 +539,8 @@ footer {
 .digit-ring { width: 44px; height: 44px; }
 .digit-ring-bg { fill: none; stroke: #EDEFF2; stroke-width: 4; }
 .digit-ring-fg { fill: none; stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset 0.3s ease; }
-.digit-ring-text { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 600; fill: #1A1D22; text-anchor: middle; }
-.digit-pct { font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; color: #6B7280; }
+.digit-ring-text { font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 800; fill: #1A1D22; text-anchor: middle; }
+.digit-pct { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: #6B7280; }
 
 .digit-cursor {
   position: absolute;
