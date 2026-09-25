@@ -515,7 +515,7 @@ footer {
 }
 
 .digits-widget { border-top: 1px solid #E4E7EB; padding-top: 0.45rem; }
-.digits-label { font-size: 0.9rem; color: #6B7280; margin: 0 0 0.6rem; }
+.digits-label { font-size: 0.78rem; color: #6B7280; margin: 0 0 0.6rem; }
 .digits-row { display: grid; grid-template-columns: repeat(10, 1fr); gap: 0.4rem; }
 
 @media (max-width: 640px) {
@@ -539,8 +539,8 @@ footer {
 .digit-ring { width: 44px; height: 44px; }
 .digit-ring-bg { fill: none; stroke: #EDEFF2; stroke-width: 4; }
 .digit-ring-fg { fill: none; stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset 0.3s ease; }
-.digit-ring-text { font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 800; fill: #1A1D22; text-anchor: middle; }
-.digit-pct { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: #6B7280; }
+.digit-ring-text { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 600; fill: #1A1D22; text-anchor: middle; }
+.digit-pct { font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; color: #6B7280; }
 
 .digit-cursor {
   position: absolute;
@@ -572,31 +572,85 @@ footer {
 
 .btn-direction {
   flex: 1;
-  padding: 0.75rem;
+  padding: 0.6rem 0.5rem;
   border-radius: 9px;
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   border: 2px solid transparent;
-  opacity: 0.55;
-  transition: opacity 0.15s ease, transform 0.1s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  transition: transform 0.1s ease, opacity 0.15s ease;
 }
 
-.btn-direction.active { opacity: 1; }
-.btn-direction:hover { transform: translateY(-1px); }
+.btn-direction:disabled { opacity: 0.5; cursor: default; }
+.btn-direction:not(:disabled):hover { transform: translateY(-1px); }
+
+.btn-direction-label { font-size: 0.9rem; }
+.btn-direction-payout {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  opacity: 0.85;
+}
+
 .btn-rise { background: rgba(46,204,143,0.12); color: var(--rise); border-color: rgba(46,204,143,0.4); }
-.btn-rise.active { border-color: var(--rise); }
 .btn-fall { background: rgba(255,92,92,0.12); color: var(--fall); border-color: rgba(255,92,92,0.4); }
-.btn-fall.active { border-color: var(--fall); }
+
 .trade-digit-row.hidden { display: none; }
 .trade-digit-row { gap: 0.6rem; }
 .trade-digit-row select { flex: 1; }
 
-.btn-quote { width: 100%; padding: 0.8rem; border-radius: 9px; border: none; font-weight: 600; color: #fff; margin-top: 0.3rem; }
-.btn-quote-green { background: var(--rise); }
-.btn-quote-red { background: var(--fall); }
-.btn-buy { width: 100%; padding: 0.85rem; border-radius: 9px; border: none; font-weight: 700; font-size: 1rem; color: #fff; margin-top: 0.6rem; }
+.btn-buy {
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 9px;
+  border: none;
+  font-weight: 700;
+  color: #fff;
+  margin-top: 0.6rem;
+  background: var(--gold);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  transition: opacity 0.15s ease;
+}
+
+.btn-buy:disabled { opacity: 0.5; cursor: default; }
+.btn-buy .btn-direction-label { font-size: 1rem; }
+.btn-buy .btn-direction-payout { font-size: 0.75rem; opacity: 0.9; }
 .btn-buy-green { background: var(--rise); }
 .btn-buy-red { background: var(--fall); }
+
+/* ---------- Accumulators ---------- */
+
+.growth-rate-row { display: flex; gap: 0.4rem; }
+
+.growth-rate-btn {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--text-lo);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.5rem 0.3rem;
+  border-radius: 7px;
+}
+
+.growth-rate-btn.active { border-color: var(--gold); color: var(--gold-hi); background: rgba(212,169,74,0.1); }
+
+.take-profit-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-hi);
+  margin-bottom: 0.5rem;
+  cursor: pointer;
+}
+
+.take-profit-label input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--gold); }
 
 .trade-row { margin-bottom: 0.9rem; }
 .trade-row label { display: block; font-size: 0.78rem; color: var(--text-lo); margin-bottom: 0.3rem; }
