@@ -104,13 +104,22 @@
               <div class="trade-type-tabs">
                 <button class="trade-type-tab active" data-group="rise_fall">Rise/Fall</button>
                 <button class="trade-type-tab" data-group="digits">Digits</button>
+                <button class="trade-type-tab" data-group="accumulators">Accumulators</button>
               </div>
 
+              <!-- Rise/Fall: both buttons show a live payout and buy immediately on click -->
               <div id="rise-fall-row" class="trade-direction-row">
-                <button class="btn-direction btn-rise active" data-contract="CALL">▲ Rise</button>
-                <button class="btn-direction btn-fall" data-contract="PUT">▼ Fall</button>
+                <button class="btn-direction btn-rise" data-contract="CALL">
+                  <span class="btn-direction-label">▲ Rise</span>
+                  <span class="btn-direction-payout">—</span>
+                </button>
+                <button class="btn-direction btn-fall" data-contract="PUT">
+                  <span class="btn-direction-label">▼ Fall</span>
+                  <span class="btn-direction-payout">—</span>
+                </button>
               </div>
 
+              <!-- Digits: pick contract type + digit, one live-payout buy button -->
               <div id="trade-digit-row" class="trade-direction-row hidden">
                 <select id="digit-contract-select" class="trade-select">
                   <option value="DIGITMATCH">Matches</option>
@@ -121,7 +130,8 @@
                 <select id="trade-digit" class="trade-select"></select>
               </div>
 
-              <div class="trade-row trade-row-split">
+              <!-- Shared duration/unit — hidden for Accumulators, which has no fixed expiry -->
+              <div id="duration-fields" class="trade-row trade-row-split">
                 <div>
                   <label>Duration</label>
                   <input id="trade-duration" type="number" min="1" value="5" class="trade-input" />
@@ -136,24 +146,44 @@
                 </div>
               </div>
 
+              <!-- Accumulators: growth rate + optional take profit -->
+              <div id="accumulator-fields" class="hidden">
+                <div class="trade-row">
+                  <label>Growth rate</label>
+                  <div id="growth-rate-row" class="growth-rate-row">
+                    <button class="growth-rate-btn" data-rate="0.01">1%</button>
+                    <button class="growth-rate-btn" data-rate="0.02">2%</button>
+                    <button class="growth-rate-btn" data-rate="0.03">3%</button>
+                    <button class="growth-rate-btn" data-rate="0.04">4%</button>
+                    <button class="growth-rate-btn" data-rate="0.05">5%</button>
+                  </div>
+                </div>
+
+                <div class="trade-row">
+                  <label class="take-profit-label">
+                    <input type="checkbox" id="take-profit-toggle" />
+                    Take profit
+                  </label>
+                  <input id="take-profit-value" type="number" min="0" step="0.01"
+                    class="trade-input hidden" placeholder="Amount" />
+                </div>
+              </div>
+
               <div class="trade-row">
                 <label>Stake</label>
                 <input id="trade-stake" type="number" min="0.35" step="0.01" value="1" class="trade-input" />
               </div>
 
-              <button id="trade-quote-btn" class="btn-quote">Get price</button>
+              <!-- Digits and Accumulators each get one live-payout buy button here -->
+              <button id="digit-buy-btn" class="btn-buy hidden" data-contract="DIGITMATCH">
+                <span class="btn-direction-label">Buy</span>
+                <span class="btn-direction-payout">—</span>
+              </button>
 
-              <div id="trade-quote-result" class="trade-quote hidden">
-                <div class="trade-quote-row">
-                  <span>Payout</span>
-                  <span id="trade-payout">—</span>
-                </div>
-                <div class="trade-quote-row">
-                  <span>Cost</span>
-                  <span id="trade-cost">—</span>
-                </div>
-                <button id="trade-buy-btn" class="btn-buy">Buy</button>
-              </div>
+              <button id="accu-buy-btn" class="btn-buy btn-buy-green hidden" data-contract="ACCU">
+                <span class="btn-direction-label">Buy</span>
+                <span class="btn-direction-payout">—</span>
+              </button>
 
               <div id="trade-result" class="trade-result hidden"></div>
             </div>
