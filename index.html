@@ -107,26 +107,15 @@
                 <button class="trade-type-tab" data-group="accumulators">Accumulators</button>
               </div>
 
-              <!-- Rise/Fall: both buttons show a live payout and buy immediately on click -->
-              <div id="rise-fall-row" class="trade-direction-row">
-                <button class="btn-direction btn-rise" data-contract="CALL">
-                  <span class="btn-direction-label">▲ Rise</span>
-                  <span class="btn-direction-payout">—</span>
-                </button>
-                <button class="btn-direction btn-fall" data-contract="PUT">
-                  <span class="btn-direction-label">▼ Fall</span>
-                  <span class="btn-direction-payout">—</span>
-                </button>
+              <!-- Digits: choose which opposite pair, then (except Even/Odd) which digit -->
+              <div id="digit-pair-tabs" class="digit-pair-tabs hidden">
+                <button class="pair-tab active" data-pair="matches_differs">Matches/Differs</button>
+                <button class="pair-tab" data-pair="over_under">Over/Under</button>
+                <button class="pair-tab" data-pair="even_odd">Even/Odd</button>
               </div>
 
-              <!-- Digits: pick contract type + digit, one live-payout buy button -->
-              <div id="trade-digit-row" class="trade-direction-row hidden">
-                <select id="digit-contract-select" class="trade-select">
-                  <option value="DIGITMATCH">Matches</option>
-                  <option value="DIGITDIFF">Differs</option>
-                  <option value="DIGITOVER">Over</option>
-                  <option value="DIGITUNDER">Under</option>
-                </select>
+              <div id="digit-value-row" class="trade-row hidden">
+                <label>Digit</label>
                 <select id="trade-digit" class="trade-select"></select>
               </div>
 
@@ -174,12 +163,22 @@
                 <input id="trade-stake" type="number" min="0.35" step="0.01" value="1" class="trade-input" />
               </div>
 
-              <!-- Digits and Accumulators each get one live-payout buy button here -->
-              <button id="digit-buy-btn" class="btn-buy hidden" data-contract="DIGITMATCH">
-                <span class="btn-direction-label">Buy</span>
-                <span class="btn-direction-payout">—</span>
-              </button>
+              <!-- Action buttons live BELOW the parameters for every trade type.
+                   This one shared pair is reused for Rise/Fall and all three
+                   Digits pairs — only the labels, colors, and contract types
+                   change; the live-payout + immediate-buy behavior is identical. -->
+              <div id="dual-button-row" class="trade-direction-row">
+                <button class="btn-direction btn-rise" id="dual-btn-a" data-contract="CALL">
+                  <span class="btn-direction-label">▲ Rise</span>
+                  <span class="btn-direction-payout">—</span>
+                </button>
+                <button class="btn-direction btn-fall" id="dual-btn-b" data-contract="PUT">
+                  <span class="btn-direction-label">▼ Fall</span>
+                  <span class="btn-direction-payout">—</span>
+                </button>
+              </div>
 
+              <!-- Accumulators has no opposite side, so it keeps its own single button -->
               <button id="accu-buy-btn" class="btn-buy btn-buy-green hidden" data-contract="ACCU">
                 <span class="btn-direction-label">Buy</span>
                 <span class="btn-direction-payout">—</span>
