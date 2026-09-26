@@ -1,38 +1,64 @@
 // ==========================================================
 // AlgoTrade — trade.js
-// Rise/Fall, Digits (Matches/Differs, Over/Under), and Accumulators.
+// Rise/Fall, Digits (Matches/Differs, Over/Under, Even/Odd), and
+// Accumulators.
 //
-// New behavior: no more "Get price" click. Each buy button keeps a
-// LIVE proposal subscription running in the background (payout updates
-// automatically as the market moves or inputs change) and buys
-// immediately using whatever proposal is currently cached — the same
-// pattern Deriv's own site uses.
+// Rise/Fall and every Digits pair share ONE reusable pair of buttons
+// (#dual-btn-a / #dual-btn-b) — only the labels, colors, and contract
+// types change between them. Each button keeps a LIVE proposal
+// subscription running (payout updates automatically) and buys
+// immediately on click, using whatever proposal is currently cached.
+// Accumulators has no opposite side, so it keeps its own single button.
 // ==========================================================
 
 const tradePanelEl        = document.getElementById("trade-panel");
 const typeTabEls          = document.querySelectorAll(".trade-type-tab");
-const riseFallRowEl       = document.getElementById("rise-fall-row");
-const digitRowEl          = document.getElementById("trade-digit-row");
-const digitContractSelect = document.getElementById("digit-contract-select");
+const digitPairTabsEl     = document.getElementById("digit-pair-tabs");
+const digitValueRowEl     = document.getElementById("digit-value-row");
 const digitValueSelect    = document.getElementById("trade-digit");
 const durationFieldsEl    = document.getElementById("duration-fields");
 const durationEl          = document.getElementById("trade-duration");
 const durationUnitEl      = document.getElementById("trade-duration-unit");
-const stakeEl              = document.getElementById("trade-stake");
+const stakeEl             = document.getElementById("trade-stake");
 const accumulatorFieldsEl = document.getElementById("accumulator-fields");
 const growthRateRowEl     = document.getElementById("growth-rate-row");
 const takeProfitToggleEl  = document.getElementById("take-profit-toggle");
 const takeProfitValueEl   = document.getElementById("take-profit-value");
-const digitBuyBtn         = document.getElementById("digit-buy-btn");
+const dualButtonRowEl     = document.getElementById("dual-button-row");
+const dualBtnA            = document.getElementById("dual-btn-a");
+const dualBtnB            = document.getElementById("dual-btn-b");
 const accuBuyBtn          = document.getElementById("accu-buy-btn");
 const tradeResultEl       = document.getElementById("trade-result");
 
 let activeGroup = "rise_fall";   // "rise_fall" | "digits" | "accumulators"
-let growthRate = 0.01;           // accumulators: 1%-5%
+let activePair = "matches_differs"; // digits sub-selection
+let growthRate = 0.01;
 let refreshTimer = null;
 
 // contractType -> { unsubscribe, proposal: {id, ask_price, payout} | null }
 let liveProposals = {};
+
+// Every pair of opposite contract types the dual buttons can show.
+// "rise_fall" isn't listed here since it's the default already in the HTML.
+const DIGIT_PAIRS = {
+  matches_differs: [
+    { contract: "DIGITMATCH", label: "Matches", side: "rise" },
+    { contract: "DIGITDIFF", label: "Differs", side: "fall" },
+  ],
+  over_under: [
+    { contract: "DIGITOVER", label: "Over", side: "rise" },
+    { contract: "DIGITUNDER", label: "Under", side: "fall" },
+  ],
+  even_odd: [
+    { contract: "DIGITEVEN", label: "Even", side: "rise" },
+    { contract: "DIGITODD", label: "Odd", side: "fall" },
+  ],
+};
+
+const RISE_FALL_PAIR = [
+  { contract: "CALL", label: "▲ Rise", side: "rise" },
+  { contract: "PUT", label: "▼ Fall", side: "fall" },
+];
 
 // Populate the digit value dropdown (0-9) once.
 for (let d = 0; d <= 9; d++) {
@@ -45,6 +71,24 @@ for (let d = 0; d <= 9; d++) {
 function getActiveCurrency() {
   const acct = AppState.accounts.find((a) => a.account_id === AppState.activeAccountId);
   return acct ? acct.currency : "USD";
+}
+
+function currentPair() {
+  return activeGroup === "digits" ? DIGIT_PAIRS[activePair] : RISE_FALL_PAIR;
+}
+
+// Applies the current pair's labels/colors/contract types onto the one
+// shared pair of buttons.
+function renderDualButtons() {
+  const [a, b] = currentPair();
+
+  dualBtnA.dataset.contract = a.contract;
+  dualBtnA.querySelector(".btn-direction-label").textContent = a.label;
+  dualBtnA.className = `btn-direction ${a.side === "rise" ? "btn-rise" : "btn-fall"}`;
+
+  dualBtnB.dataset.contract = b.contract;
+  dualBtnB.querySelector(".btn-direction-label").textContent = b.label;
+  dualBtnB.className = `btn-direction ${b.side === "rise" ? "btn-rise" : "btn-fall"}`;
 }
 
 // ==========================================================
@@ -69,7 +113,8 @@ function buildProposalRequest(contractType) {
   } else {
     req.duration = parseInt(durationEl.value, 10);
     req.duration_unit = durationUnitEl.value;
-    if (activeGroup === "digits") {
+    // Even/Odd needs no barrier — only Matches/Differs/Over/Under do.
+    if (activeGroup === "digits" && activePair !== "even_odd") {
       req.barrier = digitValueSelect.value;
     }
   }
@@ -119,7 +164,7 @@ function startLiveProposal(contractType, btn) {
   liveProposals[contractType] = { unsubscribe, proposal: null };
 }
 
-// Re-subscribes whatever buttons are visible for the current group.
+// Re-subscribes whatever buttons are visible for the current group/pair.
 // Debounced so rapid input changes (typing a stake) don't spam Deriv
 // with a fresh subscription on every keystroke.
 function refreshLiveProposals() {
@@ -128,13 +173,13 @@ function refreshLiveProposals() {
     stopAllLiveProposals();
     tradeResultEl.classList.add("hidden");
 
-    if (activeGroup === "rise_fall") {
-      startLiveProposal("CALL", riseFallRowEl.querySelector('[data-contract="CALL"]'));
-      startLiveProposal("PUT", riseFallRowEl.querySelector('[data-contract="PUT"]'));
-    } else if (activeGroup === "digits") {
-      startLiveProposal(digitContractSelect.value, digitBuyBtn);
-    } else if (activeGroup === "accumulators") {
+    if (activeGroup === "accumulators") {
       startLiveProposal("ACCU", accuBuyBtn);
+    } else {
+      renderDualButtons();
+      const [a, b] = currentPair();
+      startLiveProposal(a.contract, dualBtnA);
+      startLiveProposal(b.contract, dualBtnB);
     }
   }, 400);
 }
@@ -175,13 +220,9 @@ async function buyContract(contractType, btn) {
   }
 }
 
-riseFallRowEl.addEventListener("click", (e) => {
+dualButtonRowEl.addEventListener("click", (e) => {
   const btn = e.target.closest(".btn-direction");
   if (btn) buyContract(btn.dataset.contract, btn);
-});
-
-digitBuyBtn.addEventListener("click", () => {
-  buyContract(digitContractSelect.value, digitBuyBtn);
 });
 
 accuBuyBtn.addEventListener("click", () => {
@@ -197,23 +238,25 @@ typeTabEls.forEach((tab) => {
     typeTabEls.forEach((t) => t.classList.toggle("active", t === tab));
     activeGroup = tab.dataset.group;
 
-    riseFallRowEl.classList.toggle("hidden", activeGroup !== "rise_fall");
-    digitRowEl.classList.toggle("hidden", activeGroup !== "digits");
-    digitBuyBtn.classList.toggle("hidden", activeGroup !== "digits");
+    digitPairTabsEl.classList.toggle("hidden", activeGroup !== "digits");
+    digitValueRowEl.classList.toggle("hidden", !(activeGroup === "digits" && activePair !== "even_odd"));
     accumulatorFieldsEl.classList.toggle("hidden", activeGroup !== "accumulators");
     accuBuyBtn.classList.toggle("hidden", activeGroup !== "accumulators");
+    dualButtonRowEl.classList.toggle("hidden", activeGroup === "accumulators");
     durationFieldsEl.classList.toggle("hidden", activeGroup === "accumulators");
 
     refreshLiveProposals();
   });
 });
 
-const DIGIT_LABELS = { DIGITMATCH: "Buy Matches", DIGITDIFF: "Buy Differs", DIGITOVER: "Buy Over", DIGITUNDER: "Buy Under" };
-
-digitContractSelect.addEventListener("change", () => {
-  digitBuyBtn.dataset.contract = digitContractSelect.value;
-  digitBuyBtn.querySelector(".btn-direction-label").textContent = DIGIT_LABELS[digitContractSelect.value];
-  refreshLiveProposals();
+// ---- Digits pair selector (Matches/Differs, Over/Under, Even/Odd) ----
+digitPairTabsEl.querySelectorAll(".pair-tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    digitPairTabsEl.querySelectorAll(".pair-tab").forEach((t) => t.classList.toggle("active", t === tab));
+    activePair = tab.dataset.pair;
+    digitValueRowEl.classList.toggle("hidden", activePair === "even_odd");
+    refreshLiveProposals();
+  });
 });
 
 digitValueSelect.addEventListener("change", refreshLiveProposals);
@@ -240,7 +283,6 @@ takeProfitValueEl.addEventListener("input", refreshLiveProposals);
 
 // Show the trade panel and start live pricing once a market is selected.
 document.addEventListener("algotrade:symbol-selected", () => {
-  digitBuyBtn.querySelector(".btn-direction-label").textContent = DIGIT_LABELS[digitContractSelect.value];
   tradePanelEl.classList.remove("hidden");
   refreshLiveProposals();
 });
