@@ -567,6 +567,21 @@ footer {
 }
 
 .trade-type-tab.active { border-color: var(--gold); color: var(--gold-hi); background: rgba(212,169,74,0.08); }
+
+.digit-pair-tabs { display: flex; gap: 0.3rem; margin-bottom: 0.9rem; }
+.digit-pair-tabs.hidden { display: none; }
+
+.pair-tab {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--text-lo);
+  font-size: 0.72rem;
+  padding: 0.45rem 0.2rem;
+  border-radius: 7px;
+}
+
+.pair-tab.active { border-color: var(--gold); color: var(--gold-hi); background: rgba(212,169,74,0.08); }
 .trade-direction-row { display: flex; gap: 0.6rem; margin-bottom: 0.9rem; }
 .trade-direction-row.hidden { display: none; }
 
