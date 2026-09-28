@@ -160,42 +160,76 @@ function decimalPlacesFor(pipSize) {
   return dot === -1 ? 0 : str.length - dot - 1;
 }
 
-function selectSymbol(symbol, displayName) {
+// ---------- Live price feed (the ONE ticks subscription) ----------
+//
+// IMPORTANT: this is the ONLY ticks subscription for the selected symbol.
+// Deriv's API returns an "AlreadySubscribed" error for a duplicate
+// identical subscription on one connection — so other modules (the
+// digits widget) must NOT open their own ticks subscription. Instead
+// they listen for the "algotrade:tick" event broadcast below.
+
+let lastTickAt = 0;
+
+function startTickFeed(symbol) {
   if (AppState.unsubscribeTicks) {
     AppState.unsubscribeTicks();
     AppState.unsubscribeTicks = null;
   }
 
+  const meta = AppState.allSymbols.find((s) => s.symbol === symbol);
+  const decimals = meta ? decimalPlacesFor(meta.pipSize) : 2;
+
+  lastTickAt = Date.now(); // grace period before the watchdog may act
+
+  // Note: unlike active_symbols, the ticks request/response still use
+  // the plain "symbol" field name in the new API (not underlying_symbol).
+  AppState.unsubscribeTicks = derivAPI.subscribe({ ticks: symbol }, (data) => {
+    if (!data.tick) return;
+    lastTickAt = Date.now();
+    // .toFixed() — Deriv sends the quote as a plain number, so a
+    // trailing zero (e.g. 705.30) gets silently dropped by JS unless
+    // we format it to the market's actual decimal precision.
+    priceValueEl.textContent = Number(data.tick.quote).toFixed(decimals);
+    document.dispatchEvent(
+      new CustomEvent("algotrade:tick", { detail: { symbol, quote: data.tick.quote } })
+    );
+  });
+}
+
+// Self-healing: if the market is open but no tick has arrived for a few
+// seconds, the stream has gone quiet (whatever the cause) — resubscribe.
+function tickFeedIsStale(maxAgeMs) {
+  if (!AppState.selectedSymbol) return false;
+  const meta = AppState.allSymbols.find((s) => s.symbol === AppState.selectedSymbol);
+  if (meta && !meta.exchangeIsOpen) return false; // closed market: silence is normal
+  return Date.now() - lastTickAt > maxAgeMs;
+}
+
+function healTickFeedIfStale(maxAgeMs) {
+  if (tickFeedIsStale(maxAgeMs)) {
+    console.warn("Tick feed went quiet — resubscribing to", AppState.selectedSymbol);
+    startTickFeed(AppState.selectedSymbol);
+  }
+}
+
+setInterval(() => healTickFeedIfStale(5000), 2000);
+
+// trade.js announces when it has just torn down and restarted its live
+// proposals (every contract-type click). Check the price feed shortly after.
+document.addEventListener("algotrade:proposals-restarted", () => {
+  setTimeout(() => healTickFeedIfStale(2500), 1800);
+});
+
+function selectSymbol(symbol, displayName) {
   AppState.selectedSymbol = symbol;
   renderList();
   closeMarketDropdown();
-
-  const meta = AppState.allSymbols.find((s) => s.symbol === symbol);
-  const decimals = meta ? decimalPlacesFor(meta.pipSize) : 2;
 
   priceSymbolNameEl.textContent = displayName;
   priceSymbolCodeEl.textContent = symbol;
   priceValueEl.textContent = "…";
 
-  // Note: unlike active_symbols, the ticks request/response still use
-  // the plain "symbol" field name in the new API (not underlying_symbol).
-  //
-  // IMPORTANT: this is the ONLY ticks subscription for the selected symbol.
-  // Deriv's API returns an "AlreadySubscribed" error for a duplicate
-  // identical subscription on one connection — so other modules (the
-  // digits widget) must NOT open their own ticks subscription. Instead
-  // they listen for the "algotrade:tick" event broadcast below.
-  AppState.unsubscribeTicks = derivAPI.subscribe({ ticks: symbol }, (data) => {
-    if (data.tick) {
-      // .toFixed() — Deriv sends the quote as a plain number, so a
-      // trailing zero (e.g. 705.30) gets silently dropped by JS unless
-      // we format it to the market's actual decimal precision.
-      priceValueEl.textContent = Number(data.tick.quote).toFixed(decimals);
-      document.dispatchEvent(
-        new CustomEvent("algotrade:tick", { detail: { symbol, quote: data.tick.quote } })
-      );
-    }
-  });
+  startTickFeed(symbol);
 
   document.dispatchEvent(new CustomEvent("algotrade:symbol-selected", { detail: { symbol, displayName } }));
 }
