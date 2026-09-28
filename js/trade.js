@@ -181,6 +181,8 @@ function refreshLiveProposals() {
       startLiveProposal(a.contract, dualBtnA);
       startLiveProposal(b.contract, dualBtnB);
     }
+    // Lets the price feed verify itself is still ticking after this churn.
+    document.dispatchEvent(new CustomEvent("algotrade:proposals-restarted"));
   }, 400);
 }
 
