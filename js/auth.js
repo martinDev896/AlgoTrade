@@ -53,12 +53,10 @@ function showScreen(name) {
   if (name === "error") errorScreen.classList.remove("hidden");
 }
 
-function setConnectionPill(connected) {
+function setConnectionPill(connected, label) {
   connectionPill.classList.toggle("pill-online", connected);
   connectionPill.classList.toggle("pill-offline", !connected);
-  connectionPill.innerHTML = connected
-    ? `<span class="dot"></span> Connected`
-    : `<span class="dot"></span> Not connected`;
+  connectionPill.innerHTML = `<span class="dot"></span> ${label || (connected ? "Connected" : "Not connected")}`;
 }
 
 function showError(message) {
@@ -200,6 +198,74 @@ async function activateAccount(accountId) {
 accountSwitcherEl.addEventListener("change", () => {
   activateAccount(accountSwitcherEl.value);
 });
+
+// ==========================================================
+// Reconnection
+//
+// Deriv closes idle WebSocket sessions after 2 minutes, and the OTP that
+// authenticated the connection is single-use and only valid ~120 seconds
+// — so once the socket drops, reconnecting to the same URL is not an
+// option. This gets a fresh OTP for the still-active account, opens a
+// new connection, restores the balance stream, and then tells the rest
+// of the app (markets/chart/trade/digits) to resume via the
+// "algotrade:reconnected" event, so each module re-issues its own
+// subscriptions using whatever it already had selected.
+// ==========================================================
+
+let reconnecting = false;
+
+async function reconnectSession() {
+  if (reconnecting || !AppState.activeAccountId) return;
+  reconnecting = true;
+  setConnectionPill(false, "Reconnecting…");
+
+  try {
+    const res = await fetch(
+      `${DERIV_CONFIG.ACCOUNTS_API_BASE}/accounts/${AppState.activeAccountId}/otp`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${AppState.accessToken}`,
+          "Deriv-App-ID": DERIV_CONFIG.CLIENT_ID,
+        },
+      }
+    );
+
+    if (res.status === 401) {
+      // The access token itself has expired too — no amount of retrying
+      // will fix this, the user needs to sign in with Deriv again.
+      sessionStorage.removeItem(TOKEN_KEY);
+      setAppLightMode(false);
+      appTabsNav.classList.add("hidden");
+      balanceWidgetEl.classList.add("hidden");
+      showError("Your session with Deriv has expired. Please connect again.");
+      reconnecting = false;
+      return;
+    }
+
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.errors?.[0]?.message || "Reconnect failed.");
+
+    await derivAPI.connectToUrl(body.data.url);
+
+    if (AppState.unsubscribeBalance) AppState.unsubscribeBalance();
+    AppState.unsubscribeBalance = derivAPI.subscribe({ balance: 1 }, (data) => {
+      if (!data.balance) return;
+      updateBalanceDisplay(data.balance.balance, data.balance.currency);
+    });
+
+    setConnectionPill(true);
+    reconnecting = false;
+    document.dispatchEvent(new CustomEvent("algotrade:reconnected"));
+  } catch (err) {
+    console.error("Reconnect attempt failed, retrying in 5s:", err.message);
+    setConnectionPill(false, "Reconnecting…");
+    reconnecting = false;
+    setTimeout(reconnectSession, 5000);
+  }
+}
+
+derivAPI.onDisconnected = reconnectSession;
 
 // ==========================================================
 // Orchestration
