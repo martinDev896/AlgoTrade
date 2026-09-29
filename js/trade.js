@@ -288,3 +288,10 @@ document.addEventListener("algotrade:symbol-selected", () => {
   tradePanelEl.classList.remove("hidden");
   refreshLiveProposals();
 });
+
+
+// After a reconnect (fresh WebSocket, see auth.js), the old proposal
+// subscriptions are gone with it — restart live pricing.
+document.addEventListener("algotrade:reconnected", () => {
+  if (AppState.selectedSymbol) refreshLiveProposals();
+});
