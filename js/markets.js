@@ -237,3 +237,9 @@ function selectSymbol(symbol, displayName) {
 marketSearchEl.addEventListener("input", renderList);
 
 document.addEventListener("algotrade:account-ready", loadMarkets);
+// After a reconnect (fresh WebSocket, see auth.js), the old tick
+// subscription is gone with it — resume streaming for whatever symbol
+// was already selected.
+document.addEventListener("algotrade:reconnected", () => {
+  if (AppState.selectedSymbol) startTickFeed(AppState.selectedSymbol);
+});
