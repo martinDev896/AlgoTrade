@@ -163,3 +163,10 @@ if (chartExpandBtnEl) {
 }
 
 document.addEventListener("algotrade:symbol-selected", (e) => loadChartFor(e.detail.symbol));
+
+
+// After a reconnect (fresh WebSocket, see auth.js), reload the chart for
+// whatever symbol was already selected — its old subscription is gone.
+document.addEventListener("algotrade:reconnected", () => {
+  if (AppState.selectedSymbol) loadChartFor(AppState.selectedSymbol);
+});
