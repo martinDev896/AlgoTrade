@@ -30,6 +30,25 @@ class DerivConnection {
     this.connectPromise = null;
     this.currentUrl = null;
     this.onStatusChange = null;
+    this.onDisconnected = null;   // set externally (auth.js) to get a fresh OTP and reconnect
+    this.keepaliveTimer = null;
+    this.deliberateClose = false; // true when WE closed it (e.g. Disconnect button) — skip auto-reconnect
+  }
+
+  _startKeepalive() {
+    clearInterval(this.keepaliveTimer);
+    // Deriv closes idle sessions after 2 minutes; ping well under that
+    // so an active session should never actually hit the timeout.
+    this.keepaliveTimer = setInterval(() => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.send({ ping: 1 }).catch(() => {});
+      }
+    }, 25000);
+  }
+
+  _stopKeepalive() {
+    clearInterval(this.keepaliveTimer);
+    this.keepaliveTimer = null;
   }
 
   connectToUrl(wsUrl) {
@@ -39,6 +58,7 @@ class DerivConnection {
 
       this.ws.onopen = () => {
         if (this.onStatusChange) this.onStatusChange("connected");
+        this._startKeepalive();
         resolve();
       };
 
@@ -51,7 +71,16 @@ class DerivConnection {
 
       this.ws.onclose = () => {
         if (this.onStatusChange) this.onStatusChange("disconnected");
+        this._stopKeepalive();
         this.connectPromise = null;
+        // OTPs are single-use and only valid ~120s, so we can't just
+        // reconnect to the same URL — a fresh OTP (and a resubscribe of
+        // everything) is needed. That's handled externally since it
+        // needs the access token / active account (auth.js's domain).
+        if (!this.deliberateClose && this.onDisconnected) {
+          this.onDisconnected();
+        }
+        this.deliberateClose = false;
       };
     });
 
@@ -149,6 +178,8 @@ class DerivConnection {
   }
 
   close() {
+    this.deliberateClose = true;
+    this._stopKeepalive();
     if (this.ws) this.ws.close();
   }
 }
