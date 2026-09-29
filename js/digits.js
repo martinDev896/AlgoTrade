@@ -142,3 +142,6 @@ document.addEventListener("algotrade:symbol-selected", (e) => {
     currentDigitsSymbol = null;
   }
 });
+document.addEventListener("algotrade:reconnected", () => {
+  if (digitsActive && currentDigitsSymbol) loadDigitsFor(currentDigitsSymbol, currentPipSize);
+});
