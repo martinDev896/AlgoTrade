@@ -35,6 +35,44 @@ function computeCounts() {
 
 let cellRefs = []; // persistent references to each digit's DOM pieces
 
+// The currently open digit contract, if any — drives win/lose coloring.
+// { contractType, barrier, winSet: Set<number> } | null
+let activeContract = null;
+
+const RISE_GREEN = "#2ECC8F";
+const FALL_RED = "#FF5C5C";
+
+// Which digits 0-9 currently count as a win for a given digit contract.
+function computeWinSet(contractType, barrier) {
+  const n = barrier === null || barrier === undefined ? null : Number(barrier);
+  const win = new Set();
+  for (let d = 0; d <= 9; d++) {
+    let isWin;
+    switch (contractType) {
+      case "DIGITMATCH": isWin = d === n; break;
+      case "DIGITDIFF": isWin = d !== n; break;
+      case "DIGITOVER": isWin = d > n; break;
+      case "DIGITUNDER": isWin = d < n; break;
+      case "DIGITEVEN": isWin = d % 2 === 0; break;
+      case "DIGITODD": isWin = d % 2 === 1; break;
+      default: isWin = false;
+    }
+    if (isWin) win.add(d);
+  }
+  return win;
+}
+
+document.addEventListener("algotrade:digit-contract-active", (e) => {
+  const { contractType, barrier } = e.detail;
+  activeContract = { contractType, barrier, winSet: computeWinSet(contractType, barrier) };
+  renderDigits();
+});
+
+document.addEventListener("algotrade:digit-contract-ended", () => {
+  activeContract = null;
+  renderDigits();
+});
+
 function buildDigitCells() {
   digitsRowEl.innerHTML = "";
   cellRefs = [];
@@ -45,6 +83,7 @@ function buildDigitCells() {
     cell.innerHTML = `
       <svg viewBox="0 0 44 44" class="digit-ring">
         <circle cx="22" cy="22" r="18" class="digit-ring-bg" />
+        <circle cx="22" cy="22" r="14" class="digit-fill" fill="none" />
         <circle cx="22" cy="22" r="18" class="digit-ring-fg" transform="rotate(-90 22 22)" />
         <text x="22" y="27" class="digit-ring-text">${d}</text>
       </svg>
@@ -55,6 +94,8 @@ function buildDigitCells() {
     cellRefs.push({
       root: cell,
       ringFg: cell.querySelector(".digit-ring-fg"),
+      fill: cell.querySelector(".digit-fill"),
+      text: cell.querySelector(".digit-ring-text"),
       pct: cell.querySelector(".digit-pct"),
       cursor: cell.querySelector(".digit-cursor"),
     });
@@ -72,23 +113,42 @@ function renderDigits() {
   const circumference = 2 * Math.PI * 18; // r=18
 
   for (let d = 0; d <= 9; d++) {
-    const pct = (counts[d] / total) * 100;
-    const dashOffset = circumference - (pct / 100) * circumference;
-
-    const isMax = counts[d] === max && max !== min;
-    const isMin = counts[d] === min && max !== min;
-    const ringColor = isMax ? "#2ECC8F" : isMin ? "#FF5C5C" : "#D4A94A";
-
     const ref = cellRefs[d];
-    ref.ringFg.setAttribute("stroke", ringColor);
-    ref.ringFg.setAttribute("stroke-dasharray", circumference);
-    ref.ringFg.setAttribute("stroke-dashoffset", dashOffset);
-    ref.pct.textContent = `${pct.toFixed(1)}%`;
+    const isActive = lastDigit === d; // cursor is currently on this digit
+
+    if (activeContract) {
+      // A digit contract is open: the ring border shows win/lose for
+      // this digit, as a full solid border (not a percentage arc).
+      const barColor = activeContract.winSet.has(d) ? RISE_GREEN : FALL_RED;
+      ref.ringFg.setAttribute("stroke", barColor);
+      ref.ringFg.setAttribute("stroke-dasharray", circumference);
+      ref.ringFg.setAttribute("stroke-dashoffset", 0);
+
+      // The interior only fills for whichever digit the cursor is on
+      // right now, in that same color, bounded inside the ring.
+      ref.fill.setAttribute("fill", isActive ? barColor : "none");
+      ref.fill.setAttribute("fill-opacity", "0.85");
+      ref.text.setAttribute("fill", isActive ? "#FFFFFF" : "#1A1D22");
+    } else {
+      // No open contract: back to normal last-1000-ticks frequency stats.
+      const pct = (counts[d] / total) * 100;
+      const dashOffset = circumference - (pct / 100) * circumference;
+      const isMax = counts[d] === max && max !== min;
+      const isMin = counts[d] === min && max !== min;
+      const ringColor = isMax ? RISE_GREEN : isMin ? FALL_RED : "#D4A94A";
+
+      ref.ringFg.setAttribute("stroke", ringColor);
+      ref.ringFg.setAttribute("stroke-dasharray", circumference);
+      ref.ringFg.setAttribute("stroke-dashoffset", dashOffset);
+      ref.fill.setAttribute("fill", "none");
+      ref.text.setAttribute("fill", "#1A1D22");
+    }
+
+    ref.pct.textContent = `${((counts[d] / total) * 100).toFixed(1)}%`;
 
     // Same DOM nodes persist across renders (not recreated), so toggling
     // this class actually animates via the CSS transition — the zoom
     // effect — instead of just snapping to its end state.
-    const isActive = lastDigit === d;
     ref.root.classList.toggle("digit-cell-active", isActive);
     ref.cursor.classList.toggle("hidden", !isActive);
   }
