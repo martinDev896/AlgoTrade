@@ -62,14 +62,20 @@ function computeWinSet(contractType, barrier) {
   return win;
 }
 
+// For tick-duration contracts, counted locally off the same tick stream
+// that moves the cursor — see the "algotrade:tick" listener below for why.
+let ticksUntilExpiry = null;
+
 document.addEventListener("algotrade:digit-contract-active", (e) => {
-  const { contractType, barrier } = e.detail;
+  const { contractType, barrier, duration, durationUnit } = e.detail;
   activeContract = { contractType, barrier, winSet: computeWinSet(contractType, barrier) };
+  ticksUntilExpiry = durationUnit === "t" ? duration : null;
   renderDigits();
 });
 
 document.addEventListener("algotrade:digit-contract-ended", () => {
   activeContract = null;
+  ticksUntilExpiry = null;
   renderDigits();
 });
 
@@ -186,6 +192,18 @@ document.addEventListener("algotrade:tick", (e) => {
   if (!digitsActive || e.detail.symbol !== currentDigitsSymbol) return;
   digitHistory.push(lastDigitOf(e.detail.quote, currentPipSize));
   if (digitHistory.length > 1000) digitHistory.shift();
+
+  // Count down a tick-duration contract off this SAME tick, so the
+  // colors clear at the exact instant the cursor reaches the final
+  // digit — not one tick later, waiting on a separate server message.
+  if (ticksUntilExpiry !== null) {
+    ticksUntilExpiry -= 1;
+    if (ticksUntilExpiry <= 0) {
+      activeContract = null;
+      ticksUntilExpiry = null;
+    }
+  }
+
   renderDigits();
 });
 
