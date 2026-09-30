@@ -210,6 +210,14 @@ async function buyContract(contractType, btn) {
 
     tradeResultEl.textContent = `Trade placed — contract #${res.buy.contract_id}.`;
     tradeResultEl.classList.remove("hidden");
+
+    if (activeGroup === "digits") {
+      const barrier = activePair === "even_odd" ? null : digitValueSelect.value;
+      document.dispatchEvent(
+        new CustomEvent("algotrade:digit-contract-active", { detail: { contractType, barrier } })
+      );
+      trackDigitContractExpiry(res.buy.contract_id);
+    }
   } catch (err) {
     tradeResultEl.textContent = err.message || "Trade failed.";
     tradeResultEl.classList.remove("hidden");
@@ -220,6 +228,22 @@ async function buyContract(contractType, btn) {
     // fresh one so the button re-enables with a current payout.
     startLiveProposal(contractType, btn);
   }
+}
+
+// Watches a just-bought digit contract until it settles, so the digits
+// widget knows when to stop showing win/lose coloring for it.
+function trackDigitContractExpiry(contractId) {
+  const unsubscribe = derivAPI.subscribe(
+    { proposal_open_contract: 1, contract_id: contractId },
+    (data) => {
+      const poc = data.proposal_open_contract;
+      if (!poc) return;
+      if (poc.is_sold || (poc.status && poc.status !== "open")) {
+        unsubscribe();
+        document.dispatchEvent(new CustomEvent("algotrade:digit-contract-ended"));
+      }
+    }
+  );
 }
 
 dualButtonRowEl.addEventListener("click", (e) => {
