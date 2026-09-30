@@ -538,7 +538,8 @@ footer {
 }
 .digit-ring { width: 44px; height: 44px; }
 .digit-ring-bg { fill: none; stroke: #EDEFF2; stroke-width: 4; }
-.digit-ring-fg { fill: none; stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset 0.3s ease; }
+.digit-ring-fg { fill: none; stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset 0.3s ease, stroke 0.2s ease; }
+.digit-fill { transition: fill 0.2s ease; }
 .digit-ring-text { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 600; fill: #1A1D22; text-anchor: middle; }
 .digit-pct { font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; color: #6B7280; }
 
