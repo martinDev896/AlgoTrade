@@ -193,18 +193,22 @@ document.addEventListener("algotrade:tick", (e) => {
   digitHistory.push(lastDigitOf(e.detail.quote, currentPipSize));
   if (digitHistory.length > 1000) digitHistory.shift();
 
-  // Count down a tick-duration contract off this SAME tick, so the
-  // colors clear at the exact instant the cursor reaches the final
-  // digit — not one tick later, waiting on a separate server message.
+  // Count down a tick-duration contract off this SAME tick. The final
+  // tick still renders WITH its win/lose color (that's the contract's
+  // last live moment) — only the tick AFTER it should render clear, so
+  // the contract is cleared after this render, not before it.
+  let justExpired = false;
   if (ticksUntilExpiry !== null) {
     ticksUntilExpiry -= 1;
-    if (ticksUntilExpiry <= 0) {
-      activeContract = null;
-      ticksUntilExpiry = null;
-    }
+    if (ticksUntilExpiry <= 0) justExpired = true;
   }
 
   renderDigits();
+
+  if (justExpired) {
+    activeContract = null;
+    ticksUntilExpiry = null;
+  }
 });
 
 document.addEventListener("algotrade:symbol-selected", (e) => {
