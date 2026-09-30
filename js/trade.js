@@ -214,7 +214,14 @@ async function buyContract(contractType, btn) {
     if (activeGroup === "digits") {
       const barrier = activePair === "even_odd" ? null : digitValueSelect.value;
       document.dispatchEvent(
-        new CustomEvent("algotrade:digit-contract-active", { detail: { contractType, barrier } })
+        new CustomEvent("algotrade:digit-contract-active", {
+          detail: {
+            contractType,
+            barrier,
+            duration: parseInt(durationEl.value, 10),
+            durationUnit: durationUnitEl.value,
+          },
+        })
       );
       trackDigitContractExpiry(res.buy.contract_id);
     }
