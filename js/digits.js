@@ -211,18 +211,34 @@ document.addEventListener("algotrade:tick", (e) => {
   }
 });
 
-document.addEventListener("algotrade:symbol-selected", (e) => {
-  const meta = AppState.allSymbols.find((s) => s.symbol === e.detail.symbol);
+// The widget needs BOTH a synthetic symbol selected AND the Digits trade
+// type active — Rise/Fall and Accumulators don't use it at all.
+let currentTradeGroup = "rise_fall";
+let lastSelectedSymbolMeta = null;
+
+function updateDigitsVisibility(symbol, displayNameUnused) {
+  const meta = lastSelectedSymbolMeta;
   const isSynthetic = meta && meta.marketCode === "synthetic_index";
+  const shouldShow = isSynthetic && currentTradeGroup === "digits";
 
-  digitsActive = isSynthetic;
-  digitsWidgetEl.classList.toggle("hidden", !isSynthetic);
+  digitsActive = shouldShow;
+  digitsWidgetEl.classList.toggle("hidden", !shouldShow);
 
-  if (isSynthetic) {
-    loadDigitsFor(e.detail.symbol, meta.pipSize);
-  } else {
+  if (shouldShow && symbol !== currentDigitsSymbol) {
+    loadDigitsFor(symbol, meta.pipSize);
+  } else if (!shouldShow) {
     currentDigitsSymbol = null;
   }
+}
+
+document.addEventListener("algotrade:symbol-selected", (e) => {
+  lastSelectedSymbolMeta = AppState.allSymbols.find((s) => s.symbol === e.detail.symbol);
+  updateDigitsVisibility(e.detail.symbol);
+});
+
+document.addEventListener("algotrade:trade-group-changed", (e) => {
+  currentTradeGroup = e.detail.group;
+  if (AppState.selectedSymbol) updateDigitsVisibility(AppState.selectedSymbol);
 });
 document.addEventListener("algotrade:reconnected", () => {
   if (digitsActive && currentDigitsSymbol) loadDigitsFor(currentDigitsSymbol, currentPipSize);
