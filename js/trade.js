@@ -211,7 +211,8 @@ async function buyContract(contractType, btn) {
     tradeResultEl.textContent = `Trade placed — contract #${res.buy.contract_id}.`;
     tradeResultEl.classList.remove("hidden");
 
-    if (activeGroup === "digits") {
+    const isDigitContract = activeGroup === "digits";
+    if (isDigitContract) {
       const barrier = activePair === "even_odd" ? null : digitValueSelect.value;
       document.dispatchEvent(
         new CustomEvent("algotrade:digit-contract-active", {
@@ -223,8 +224,11 @@ async function buyContract(contractType, btn) {
           },
         })
       );
-      trackDigitContractExpiry(res.buy.contract_id);
     }
+    // One subscription per contract does both jobs: clears the digits
+    // widget's coloring when it's a digit contract, and shows the
+    // win/loss popup for every contract type.
+    trackContractExpiry(res.buy.contract_id, isDigitContract);
   } catch (err) {
     tradeResultEl.textContent = err.message || "Trade failed.";
     tradeResultEl.classList.remove("hidden");
@@ -237,9 +241,10 @@ async function buyContract(contractType, btn) {
   }
 }
 
-// Watches a just-bought digit contract until it settles, so the digits
-// widget knows when to stop showing win/lose coloring for it.
-function trackDigitContractExpiry(contractId) {
+// Watches a just-bought contract of ANY type until it settles. Shows the
+// win/loss popup for all of them; additionally tells the digits widget
+// to stop showing win/lose coloring when it was a digit contract.
+function trackContractExpiry(contractId, isDigitContract) {
   const unsubscribe = derivAPI.subscribe(
     { proposal_open_contract: 1, contract_id: contractId },
     (data) => {
@@ -247,10 +252,34 @@ function trackDigitContractExpiry(contractId) {
       if (!poc) return;
       if (poc.is_sold || (poc.status && poc.status !== "open")) {
         unsubscribe();
-        document.dispatchEvent(new CustomEvent("algotrade:digit-contract-ended"));
+        showResultPopup(poc);
+        if (isDigitContract) {
+          document.dispatchEvent(new CustomEvent("algotrade:digit-contract-ended"));
+        }
       }
     }
   );
+}
+
+// Small Win/Loss toast, top-left of the chart area, auto-dismissing.
+const popupStackEl = document.getElementById("trade-result-popup-stack");
+
+function showResultPopup(poc) {
+  const won = poc.status === "won";
+  const amount = Math.abs(Number(poc.profit) || 0).toFixed(2);
+  const currency = getActiveCurrency();
+
+  const toast = document.createElement("div");
+  toast.className = `trade-result-toast ${won ? "win" : "loss"}`;
+  toast.textContent = won ? `Profit (+${amount} ${currency})` : `Loss (-${amount} ${currency})`;
+  popupStackEl.appendChild(toast);
+
+  requestAnimationFrame(() => toast.classList.add("show"));
+
+  setTimeout(() => {
+    toast.classList.remove("show");
+    setTimeout(() => toast.remove(), 250); // matches the CSS transition
+  }, 4000);
 }
 
 dualButtonRowEl.addEventListener("click", (e) => {
@@ -278,6 +307,7 @@ typeTabEls.forEach((tab) => {
     dualButtonRowEl.classList.toggle("hidden", activeGroup === "accumulators");
     durationFieldsEl.classList.toggle("hidden", activeGroup === "accumulators");
 
+    document.dispatchEvent(new CustomEvent("algotrade:trade-group-changed", { detail: { group: activeGroup } }));
     refreshLiveProposals();
   });
 });
