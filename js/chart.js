@@ -12,12 +12,15 @@ const chartContainerEl = document.getElementById("chart-container");
 const chartExpandBtnEl = document.getElementById("chart-expand-btn");
 const chartTypeBtnEl = document.getElementById("chart-type-btn");
 
+const TICK_LINE_COUNT = 500; // how many past ticks the line chart shows
+
 let chart = null;
 let candleSeries = null;
 let lineSeries = null;
 let chartType = "candles"; // "candles" | "line"
 let lastCandles = [];      // kept so toggling to line doesn't need a refetch
 let unsubscribeCandles = null;
+let currentChartSymbol = null;
 
 function ensureChartCreated() {
   if (chart) return true;
@@ -85,9 +88,37 @@ function applyChartType(type) {
   chartTypeBtnEl.dataset.next = type === "candles" ? "line" : "candles";
 }
 
-function pushCandleToLine(candle) {
-  lineSeries.update({ time: candle.time, value: candle.close });
+// Real per-tick history for the line view — a genuinely different,
+// finer-grained dataset from the 1-minute candles, not just their
+// close prices. Live updates come from the shared tick broadcast
+// (markets.js owns the one real ticks subscription per symbol — a
+// second subscription here would silently fail, same issue fixed
+// earlier for the digits widget).
+async function loadTickLineFor(symbol) {
+  try {
+    const res = await derivAPI.send({
+      ticks_history: symbol,
+      style: "ticks",
+      count: TICK_LINE_COUNT,
+      end: "latest",
+    });
+
+    const times = res.history?.times || res.times || [];
+    const prices = res.history?.prices || res.prices || [];
+    const points = times
+      .map((t, i) => ({ time: Number(t), value: Number(prices[i]) }))
+      .filter((p) => Number.isFinite(p.time) && Number.isFinite(p.value));
+
+    if (points.length) lineSeries.setData(points);
+  } catch (err) {
+    console.error("Tick history for line chart failed:", err.message);
+  }
 }
+
+document.addEventListener("algotrade:tick", (e) => {
+  if (chartType !== "line" || e.detail.symbol !== currentChartSymbol) return;
+  lineSeries.update({ time: Math.floor(Date.now() / 1000), value: Number(e.detail.quote) });
+});
 
 async function loadChartFor(symbol) {
   if (!ensureChartCreated()) return; // error message already shown
@@ -96,6 +127,8 @@ async function loadChartFor(symbol) {
     unsubscribeCandles();
     unsubscribeCandles = null;
   }
+
+  currentChartSymbol = symbol;
 
   try {
     const res = await derivAPI.send({
@@ -114,7 +147,6 @@ async function loadChartFor(symbol) {
 
     if (candles.length) {
       candleSeries.setData(candles);
-      lineSeries.setData(candles.map((c) => ({ time: c.time, value: c.close })));
       chart.timeScale().fitContent();
     } else {
       console.warn("Chart history returned no candles for", symbol, res);
@@ -122,6 +154,8 @@ async function loadChartFor(symbol) {
   } catch (err) {
     console.error("Chart history failed:", err.message);
   }
+
+  loadTickLineFor(symbol);
 
   unsubscribeCandles = derivAPI.subscribe(
     {
@@ -133,9 +167,7 @@ async function loadChartFor(symbol) {
     },
     (data) => {
       if (!data.ohlc) return;
-      const candle = normalizeCandle(data.ohlc);
-      candleSeries.update(candle);
-      pushCandleToLine(candle);
+      candleSeries.update(normalizeCandle(data.ohlc));
     }
   );
 }
