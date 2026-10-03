@@ -32,7 +32,6 @@ const accountScreen    = document.getElementById("account-screen");
 const errorScreen      = document.getElementById("error-screen");
 const errorMessageEl   = document.getElementById("error-message");
 const connectBtn       = document.getElementById("connect-btn");
-const disconnectBtn    = document.getElementById("disconnect-btn");
 const retryBtn         = document.getElementById("retry-btn");
 const connectionPill   = document.getElementById("connection-pill");
 const appIdDisplay     = document.getElementById("app-id-display");
@@ -66,6 +65,24 @@ function showError(message) {
 
 function setAppLightMode(on) {
   document.body.classList.toggle("app-light-mode", on);
+}
+
+// Full reset back to the connect screen. There's no visible "Disconnect"
+// button anymore (not something traders need day-to-day) — this now only
+// runs when a session is unrecoverable, e.g. the access token expired.
+function resetToDisconnected() {
+  sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(PKCE_KEY);
+  if (AppState.unsubscribeBalance) AppState.unsubscribeBalance();
+  derivAPI.close();
+  AppState.accounts = [];
+  AppState.activeAccountId = null;
+  AppState.accessToken = null;
+  setAppLightMode(false);
+  appTabsNav.classList.add("hidden");
+  balanceWidgetEl.classList.add("hidden");
+  setConnectionPill(false);
+  showScreen("connect");
 }
 
 // ==========================================================
@@ -142,7 +159,7 @@ async function fetchAccounts(accessToken) {
 function renderAccountSwitcher(accounts) {
   accountSwitcherEl.innerHTML = accounts
     .map((acct) => {
-      const label = `${acct.account_type === "demo" ? "Demo" : "Real"} · ${acct.account_id}`;
+      const label = acct.account_type === "demo" ? "Demo" : "Real";
       return `<option value="${acct.account_id}">${label}</option>`;
     })
     .join("");
@@ -234,10 +251,7 @@ async function reconnectSession() {
     if (res.status === 401) {
       // The access token itself has expired too — no amount of retrying
       // will fix this, the user needs to sign in with Deriv again.
-      sessionStorage.removeItem(TOKEN_KEY);
-      setAppLightMode(false);
-      appTabsNav.classList.add("hidden");
-      balanceWidgetEl.classList.add("hidden");
+      resetToDisconnected();
       showError("Your session with Deriv has expired. Please connect again.");
       reconnecting = false;
       return;
@@ -328,20 +342,5 @@ function init() {
 // ---------- Event listeners ----------
 connectBtn.addEventListener("click", redirectToDerivOAuth);
 retryBtn.addEventListener("click", redirectToDerivOAuth);
-
-disconnectBtn.addEventListener("click", () => {
-  sessionStorage.removeItem(TOKEN_KEY);
-  sessionStorage.removeItem(PKCE_KEY);
-  if (AppState.unsubscribeBalance) AppState.unsubscribeBalance();
-  derivAPI.close();
-  AppState.accounts = [];
-  AppState.activeAccountId = null;
-  AppState.accessToken = null;
-  setAppLightMode(false);
-  appTabsNav.classList.add("hidden");
-  balanceWidgetEl.classList.add("hidden");
-  setConnectionPill(false);
-  showScreen("connect");
-});
 
 init();
