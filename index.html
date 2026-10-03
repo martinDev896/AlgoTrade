@@ -11,30 +11,30 @@
 </head>
 <body>
 
-  <header class="topbar">
-    <div class="topbar-left">
-      <div class="brand">
-        <span class="brand-mark">◈</span>
-        <span class="brand-name">AlgoTrade</span>
-      </div>
-      <nav id="app-tabs" class="app-tabs hidden">
-        <button class="app-tab active" data-tab="manual-trader">Manual Trader</button>
-        <button class="app-tab" data-tab="copy-trading">Copy Trading</button>
-        <button class="app-tab" data-tab="bot-builder">Bot Builder</button>
-      </nav>
-    </div>
-
-    <div class="topbar-right">
-      <div id="balance-widget" class="balance-widget hidden">
-        <select id="account-switcher" class="account-switcher"></select>
-        <span id="balance-amount" class="balance-amount">—</span>
-        <button id="disconnect-btn" class="btn-disconnect" title="Disconnect">⏻</button>
-      </div>
+  <!-- Bar 1: fixed, balance (left) + logo (right). Always visible, no scrolling needed. -->
+  <header class="topbar-balance">
+    <div class="balance-side">
       <div id="connection-pill" class="pill pill-offline">
         <span class="dot"></span> Not connected
       </div>
+      <div id="balance-widget" class="balance-widget hidden">
+        <select id="account-switcher" class="account-switcher"></select>
+        <span id="balance-amount" class="balance-amount">—</span>
+      </div>
+    </div>
+
+    <div class="brand">
+      <span class="brand-mark">◈</span>
+      <span class="brand-name">AlgoTrade</span>
     </div>
   </header>
+
+  <!-- Bar 2: not fixed, scrolls with the page. Distinct background from the balance bar. -->
+  <nav id="app-tabs" class="app-tabs hidden">
+    <button class="app-tab active" data-tab="manual-trader">Manual Trader</button>
+    <button class="app-tab" data-tab="copy-trading">Copy Trading</button>
+    <button class="app-tab" data-tab="bot-builder">Bot Builder</button>
+  </nav>
 
   <main>
 
