@@ -7,6 +7,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<!-- Four separate files, not the single blockly.min.js bundle — that one
+     is npm's ES-module build and doesn't define a global `Blockly` when
+     loaded as a plain <script>. This is Google's own documented pattern
+     for script-tag (no build step) usage. -->
+<script src="https://cdn.jsdelivr.net/npm/blockly@10.4.3/blockly_compressed.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/blockly@10.4.3/blocks_compressed.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/blockly@10.4.3/javascript_compressed.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/blockly@10.4.3/msg/en.js"></script>
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -203,7 +211,23 @@
 
       <!-- ============ TAB: BOT BUILDER (placeholder) ============ -->
       <div id="tab-bot-builder" class="tab-panel hidden">
-        <p class="coming-soon">Bot Builder is coming soon.</p>
+        <div class="bot-builder">
+          <div class="bot-toolbar">
+            <button id="bot-run-btn" class="btn-bot-run">▶ Run</button>
+            <button id="bot-stop-btn" class="btn-bot-stop" disabled>■ Stop</button>
+            <span class="bot-toolbar-divider"></span>
+            <button id="bot-save-btn" class="btn-bot-tool">Save</button>
+            <button id="bot-load-btn" class="btn-bot-tool">Load</button>
+            <button id="bot-clear-btn" class="btn-bot-tool">Clear</button>
+            <span id="bot-status" class="bot-status">Not running</span>
+          </div>
+
+          <div id="bot-workspace-container" class="bot-workspace-container"></div>
+
+          <div id="bot-log" class="bot-log">
+            <p class="bot-log-empty">Trade log will appear here once the bot runs.</p>
+          </div>
+        </div>
       </div>
 
     </section>
@@ -230,5 +254,7 @@
   <script src="js/chart.js"></script>
   <script src="js/digits.js"></script>
   <script src="js/trade.js"></script>
+  <script src="js/bot-blocks.js"></script>
+  <script src="js/bot-runtime.js"></script>
 </body>
 </html>
