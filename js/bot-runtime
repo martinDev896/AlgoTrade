@@ -287,6 +287,13 @@ function initBotWorkspace() {
   if (botWorkspace) return;
 
   const container = document.getElementById("bot-workspace-container");
+
+  if (typeof Blockly === "undefined" || !Blockly.inject) {
+    container.innerHTML =
+      '<p class="chart-error">Bot Builder failed to load (Blockly library didn\'t load). Check your internet connection and reload the page.</p>';
+    return;
+  }
+
   botWorkspace = Blockly.inject(container, {
     toolbox: BOT_TOOLBOX_XML,
     trashcan: true,
