@@ -2,7 +2,7 @@
 // AlgoTrade — bot-blocks.js
 // Custom Blockly blocks for the Bot Builder, plus their JavaScript
 // code generators. Built-in Blockly blocks (Logic, Loops, Math,
-// Variables) are added via the toolbox in index.html — only the
+// Variables) are added via  toolbox in index.html — only the
 // trading-specific blocks are defined here.
 //
 // Every generated statement is `await`-ed, so the whole program runs
