@@ -825,3 +825,82 @@ body.app-light-mode .trade-input { background: #FFFFFF; }
   text-align: center;
   padding: 1rem;
 }
+
+/* ==========================================================
+   Bot Builder
+   ========================================================== */
+
+.bot-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.bot-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.btn-bot-run, .btn-bot-stop, .btn-bot-tool {
+  padding: 0.45rem 0.9rem;
+  border-radius: 7px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text-hi);
+}
+
+.btn-bot-run { background: var(--rise); color: #fff; border-color: var(--rise); }
+.btn-bot-run:disabled { opacity: 0.5; cursor: default; }
+
+.btn-bot-stop { background: var(--fall); color: #fff; border-color: var(--fall); }
+.btn-bot-stop:disabled { opacity: 0.5; cursor: default; }
+
+.btn-bot-tool:hover { border-color: var(--gold); }
+
+.bot-toolbar-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--line);
+  margin: 0 0.2rem;
+}
+
+.bot-status {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--text-lo);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.bot-workspace-container {
+  flex: 2;
+  min-height: 280px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #FFFFFF;
+  overflow: hidden;
+}
+
+.bot-log {
+  flex: 1;
+  min-height: 100px;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.6rem 0.8rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  color: var(--text-hi);
+}
+
+.bot-log-empty { color: var(--text-lo); }
+.bot-log-line { padding: 0.15rem 0; border-bottom: 1px dashed var(--line); }
+.bot-log-line:last-child { border-bottom: none; }
