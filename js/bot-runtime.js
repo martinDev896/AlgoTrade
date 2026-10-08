@@ -321,8 +321,20 @@ function initBotWorkspace() {
 
 document.addEventListener("algotrade:tab-shown", (e) => {
   if (e.detail.tab !== "bot-builder") return;
-  initBotWorkspace();
-  setTimeout(() => Blockly.svgResize(botWorkspace), 50);
+
+  // Removing the "hidden" class and the browser actually completing a
+  // layout/paint pass for the now-visible tab are not the same instant.
+  // Injecting Blockly synchronously here can happen while the container
+  // is still effectively invisible to it, which makes it skip rendering
+  // the toolbox entirely (not just mis-sized) — and no error is thrown,
+  // since Blockly doesn't treat "nothing to draw yet" as a failure.
+  // Two nested rAFs reliably wait for that paint to have happened first.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      initBotWorkspace();
+      if (botWorkspace) Blockly.svgResize(botWorkspace);
+    });
+  });
 });
 
 // ---------- Run / Stop / Save / Load / Clear ----------
