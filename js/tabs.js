@@ -17,5 +17,7 @@ appTabButtons.forEach((btn) => {
 
     const target = document.getElementById(`tab-${btn.dataset.tab}`);
     if (target) target.classList.remove("hidden");
+
+    document.dispatchEvent(new CustomEvent("algotrade:tab-shown", { detail: { tab: btn.dataset.tab } }));
   });
 });
