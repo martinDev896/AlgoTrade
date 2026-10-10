@@ -319,6 +319,27 @@ function initBotWorkspace() {
   });
 }
 
+// Diagnostics proved initBotWorkspace() itself works perfectly on demand
+// (confirmed: calling it directly made the toolbox appear immediately,
+// no errors). So the bug was never in Blockly or this function — it was
+// the automatic trigger not reliably reaching it. Rather than keep
+// trying to make the indirect "algotrade:tab-shown" relay more robust,
+// this hooks the Bot Builder tab button directly — one less thing that
+// can go wrong between a click and the workspace actually initializing.
+function triggerBotWorkspaceInit() {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      initBotWorkspace();
+      if (botWorkspace) Blockly.svgResize(botWorkspace);
+    });
+  });
+}
+
+const botBuilderTabBtn = document.querySelector('[data-tab="bot-builder"]');
+if (botBuilderTabBtn) {
+  botBuilderTabBtn.addEventListener("click", triggerBotWorkspaceInit);
+}
+
 document.addEventListener("algotrade:tab-shown", (e) => {
   if (e.detail.tab !== "bot-builder") return;
 
