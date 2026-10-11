@@ -436,6 +436,91 @@ botLoadBtn.addEventListener("click", () => {
   BotRuntime.log("Bot loaded.");
 });
 
+// ---------- Import a bot from a local XML file ----------
+const botImportBtn = document.getElementById("bot-import-btn");
+const botImportInput = document.getElementById("bot-import-input");
+const BOT_IMPORT_MAX_BYTES = 1024 * 1024; // real bot files are a few KB; 1 MB is generous
+
+// Every block type named in the file that this site has no definition for.
+// Blockly would otherwise drop them silently or fail halfway through,
+// leaving a half-loaded bot that looks complete but isn't.
+function botFindUnknownBlockTypes(dom) {
+  const unknown = new Set();
+  ["block", "shadow"].forEach((tag) => {
+    Array.from(dom.getElementsByTagName(tag)).forEach((el) => {
+      const type = el.getAttribute("type");
+      if (type && !Blockly.Blocks[type]) unknown.add(type);
+    });
+  });
+  return Array.from(unknown);
+}
+
+botImportBtn.addEventListener("click", () => {
+  if (!botWorkspace) return;
+  if (BotRuntime.running) {
+    BotRuntime.log("Stop the running bot before importing a different one.");
+    return;
+  }
+  botImportInput.value = ""; // so choosing the same file twice still fires "change"
+  botImportInput.click();
+});
+
+botImportInput.addEventListener("change", async () => {
+  const file = botImportInput.files[0];
+  if (!file || !botWorkspace) return;
+
+  if (file.size > BOT_IMPORT_MAX_BYTES) {
+    BotRuntime.log(`Import failed: "${file.name}" is too large to be a bot file.`);
+    return;
+  }
+
+  let dom;
+  try {
+    dom = botTextToDom(await file.text());
+  } catch (err) {
+    // Deliberately not err.message — Blockly's parse error echoes the whole file.
+    BotRuntime.log(`Import failed: "${file.name}" is not valid Blockly XML.`);
+    return;
+  }
+
+  const unknownTypes = botFindUnknownBlockTypes(dom);
+  if (unknownTypes.length) {
+    const shown = unknownTypes.slice(0, 4).join(", ");
+    const more = unknownTypes.length > 4 ? ` (+${unknownTypes.length - 4} more)` : "";
+    BotRuntime.log(
+      `Import failed: this file uses blocks AlgoTrade doesn't have: ${shown}${more}. ` +
+      `Bots exported from Deriv's own Bot Builder use a different block set and can't be imported here.`
+    );
+    return;
+  }
+
+  // Importing replaces the workspace (and the auto-save with it), so ask first
+  // — unless there's nothing but the starter block to lose.
+  if (botWorkspace.getAllBlocks(false).length > 1 &&
+      !confirm(`Replace the current bot with "${file.name}"? Your current blocks will be lost.`)) {
+    return;
+  }
+
+  // Snapshot first, so a failure partway through restores what was there.
+  const backup = Blockly.Xml.workspaceToDom(botWorkspace);
+  try {
+    botWorkspace.clear();
+    Blockly.Xml.domToWorkspace(dom, botWorkspace);
+    botWorkspace.scrollCenter();
+    BotRuntime.log(`Imported "${file.name}".`);
+
+    const hasEntryBlock = botWorkspace.getAllBlocks(false).some((b) => b.type === "when_run");
+    if (!hasEntryBlock) {
+      BotRuntime.log("Note: this bot has no 'When Run' block, so it may not behave as expected.");
+    }
+  } catch (err) {
+    botWorkspace.clear();
+    Blockly.Xml.domToWorkspace(backup, botWorkspace);
+    BotRuntime.log(`Import failed while loading "${file.name}" — your previous bot was restored.`);
+    console.error("Bot import error:", err);
+  }
+});
+
 botClearBtn.addEventListener("click", () => {
   if (!botWorkspace) return;
   if (!confirm("Clear the whole workspace? This can't be undone.")) return;
