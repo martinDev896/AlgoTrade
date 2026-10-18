@@ -16,6 +16,7 @@
 <script src="https://cdn.jsdelivr.net/npm/blockly@10.4.3/javascript_compressed.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/blockly@10.4.3/msg/en.js"></script>
 <link rel="stylesheet" href="css/style.css" />
+<link rel="stylesheet" href="css/sniper.css" />
 </head>
 <body>
 
@@ -42,6 +43,7 @@
     <button class="app-tab active" data-tab="manual-trader">Manual Trader</button>
     <button class="app-tab" data-tab="copy-trading">Copy Trading</button>
     <button class="app-tab" data-tab="bot-builder">Bot Builder</button>
+    <button class="app-tab" data-tab="sniper-trader">Sniper Trader</button>
   </nav>
 
   <main>
@@ -232,6 +234,97 @@
         </div>
       </div>
 
+      <!-- ============ TAB: SNIPER TRADER ============ -->
+      <div id="tab-sniper-trader" class="tab-panel hidden">
+        <div class="sniper-workspace">
+
+          <div class="sniper-card">
+            <h3>Sniper Trader</h3>
+            <p class="sniper-sub">Waits for a digit pattern on <b id="sn-market-line">—</b>, then trades. Change the market with the dropdown under the digit widget below.</p>
+            <div id="sn-banner" class="sniper-banner hidden"></div>
+
+            <div class="sniper-grid">
+              <div class="trade-row">
+                <label for="sn-contract">Contract to buy</label>
+                <select id="sn-contract" class="trade-select">
+                  <option value="DIGITUNDER">Digit Under</option>
+                  <option value="DIGITOVER">Digit Over</option>
+                </select>
+              </div>
+              <div class="trade-row">
+                <label for="sn-prediction">Prediction digit</label>
+                <input id="sn-prediction" type="number" min="0" max="9" step="1" value="5" class="trade-input" />
+              </div>
+              <div class="trade-row">
+                <label for="sn-duration">Duration (ticks)</label>
+                <input id="sn-duration" type="number" min="1" step="1" value="1" class="trade-input" />
+              </div>
+              <div class="trade-row">
+                <label for="sn-ndigits">Digits in a row</label>
+                <input id="sn-ndigits" type="number" min="1" max="10" step="1" value="3" class="trade-input" />
+              </div>
+              <div class="trade-row">
+                <label for="sn-compare">Digits must be</label>
+                <select id="sn-compare" class="trade-select">
+                  <option value="GTE">At or above</option>
+                  <option value="LTE">At or below</option>
+                </select>
+              </div>
+              <div class="trade-row">
+                <label for="sn-threshold">Pattern digit</label>
+                <input id="sn-threshold" type="number" min="0" max="9" step="1" value="5" class="trade-input" />
+              </div>
+              <div class="trade-row">
+                <label for="sn-maxrec">Max recovery trades</label>
+                <input id="sn-maxrec" type="number" min="1" step="1" value="2" class="trade-input" />
+              </div>
+              <div class="trade-row">
+                <label for="sn-stake">Stake</label>
+                <input id="sn-stake" type="number" min="0.35" step="0.01" value="0.35" class="trade-input" />
+              </div>
+              <div class="trade-row">
+                <label for="sn-mult">Martingale multiplier</label>
+                <input id="sn-mult" type="number" min="1" max="3" step="0.1" value="2" class="trade-input" />
+              </div>
+              <div class="trade-row">
+                <label for="sn-tp">Take profit</label>
+                <input id="sn-tp" type="number" min="0.01" step="0.01" value="10" class="trade-input" />
+              </div>
+              <div class="trade-row">
+                <label for="sn-sl">Stop loss</label>
+                <input id="sn-sl" type="number" min="0.01" step="0.01" value="20" class="trade-input" />
+              </div>
+            </div>
+
+            <div class="sniper-actions">
+              <button id="sn-run" class="btn-buy btn-buy-green">▶ Run</button>
+              <button id="sn-stop" class="btn-buy btn-buy-red" disabled>■ Stop</button>
+            </div>
+
+            <div class="sniper-stats">
+              <span>Status: <b id="sn-status">Idle</b></span>
+              <span>Trades: <b id="sn-trades">0</b></span>
+              <span>Wins: <b id="sn-wins">0</b></span>
+              <span>Next stake: <b id="sn-next">—</b></span>
+              <span>Profit: <b id="sn-profit">0.00</b></span>
+            </div>
+
+            <div id="sn-log" class="sniper-log"></div>
+          </div>
+
+          <!-- Digit distribution widget — bottom of the tab, with its own market dropdown -->
+          <div class="sniper-card sniper-digits">
+            <div class="sniper-digits-head">
+              <p id="sn-digits-label" class="digits-label">Last digit distribution — last 1,000 ticks</p>
+              <select id="sn-market-select" class="trade-select sniper-market-select"></select>
+            </div>
+            <p id="sn-digits-note" class="sniper-note hidden">Pick a synthetic index to see its digit percentages.</p>
+            <div id="sn-digits-row" class="digits-row"></div>
+          </div>
+
+        </div>
+      </div>
+
     </section>
 
     <!-- ============ STATE: ERROR ============ -->
@@ -258,5 +351,7 @@
   <script src="js/trade.js"></script>
   <script src="js/bot-blocks.js"></script>
   <script src="js/bot-runtime.js"></script>
+  <script src="js/sniper-engine.js"></script>
+  <script src="js/sniper-trader.js"></script>
 </body>
 </html>
