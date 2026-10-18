@@ -1,0 +1,352 @@
+// ==========================================================
+// AlgoTrade — sniper-trader.js
+// The "Sniper Trader" tab: settings, Run / Stop, a trade log, and the
+// last-digit distribution widget (last 1,000 ticks) at the bottom with
+// a market dropdown.
+//
+// Rules this file follows:
+//   - It never touches auth.js / api.js. It only CALLS derivAPI.send /
+//     derivAPI.subscribe, exactly like trade.js and bot-runtime.js do.
+//   - No second ticks subscription: live ticks come from the shared
+//     "algotrade:tick" broadcast (markets.js owns the one subscription).
+//   - The market is the app's single shared selection
+//     (AppState.selectedSymbol / selectSymbol), same as Manual Trader and
+//     the Blockly bot. The dropdown below the widget changes it, and it is
+//     locked while the bot is running.
+//   - Trades are ordinary proposal + buy requests on the same connection
+//     as every other trade in the app (see sniper-engine.js).
+// ==========================================================
+(function () {
+  "use strict";
+
+  const $ = (id) => document.getElementById(id);
+  const tabEl = $("tab-sniper-trader");
+  if (!tabEl) return;
+
+  const el = {
+    banner: $("sn-banner"), marketLine: $("sn-market-line"),
+    contract: $("sn-contract"), prediction: $("sn-prediction"), duration: $("sn-duration"),
+    nDigits: $("sn-ndigits"), compare: $("sn-compare"), threshold: $("sn-threshold"),
+    maxRec: $("sn-maxrec"), stake: $("sn-stake"), mult: $("sn-mult"), tp: $("sn-tp"), sl: $("sn-sl"),
+    run: $("sn-run"), stop: $("sn-stop"),
+    status: $("sn-status"), trades: $("sn-trades"), wins: $("sn-wins"), next: $("sn-next"), profit: $("sn-profit"),
+    log: $("sn-log"),
+    digitsRow: $("sn-digits-row"), digitsLabel: $("sn-digits-label"), digitsNote: $("sn-digits-note"),
+    marketSelect: $("sn-market-select"),
+  };
+
+  let session = null;           // running engine, if any
+  let activeWinSet = null;      // digits that currently count as a win (while the bot's contract is open)
+
+  // ---------- helpers ----------
+  const RISE_GREEN = "#2ECC8F";
+  const FALL_RED = "#FF5C5C";
+
+  function decimalPlacesFor(pipSize) {
+    const str = String(pipSize);
+    const dot = str.indexOf(".");
+    return dot === -1 ? 0 : str.length - dot - 1;
+  }
+  function symbolMeta(symbol) {
+    return (AppState.allSymbols || []).find((s) => s.symbol === symbol) || null;
+  }
+  function isSynthetic(meta) {
+    return !!meta && meta.marketCode === "synthetic_index";
+  }
+  function activeAccount() {
+    return AppState.accounts.find((a) => a.account_id === AppState.activeAccountId) || null;
+  }
+  function activeCurrency() {
+    const a = activeAccount();
+    return a ? a.currency : "USD";
+  }
+  function tabIsVisible() {
+    return !tabEl.classList.contains("hidden");
+  }
+  function log(text) {
+    const line = document.createElement("div");
+    line.className = "sniper-log-line";
+    line.textContent = "[" + new Date().toLocaleTimeString() + "] " + text;
+    el.log.appendChild(line);
+    el.log.scrollTop = el.log.scrollHeight;
+  }
+
+  // ==========================================================
+  // Digit distribution widget (same look + same math as digits.js)
+  // ==========================================================
+  let history = [];              // last-digit values, most recent last
+  let historySymbol = null;      // which symbol `history` belongs to
+  let cellRefs = [];
+
+  function buildCells() {
+    el.digitsRow.innerHTML = "";
+    cellRefs = [];
+    for (let d = 0; d <= 9; d++) {
+      const cell = document.createElement("div");
+      cell.className = "digit-cell";
+      cell.innerHTML =
+        '<svg viewBox="0 0 44 44" class="digit-ring">' +
+        '<circle cx="22" cy="22" r="18" class="digit-ring-bg" />' +
+        '<circle cx="22" cy="22" r="14" class="digit-fill" fill="none" />' +
+        '<circle cx="22" cy="22" r="18" class="digit-ring-fg" transform="rotate(-90 22 22)" />' +
+        '<text x="22" y="27" class="digit-ring-text">' + d + "</text></svg>" +
+        '<span class="digit-pct">0.0%</span><span class="digit-cursor hidden"></span>';
+      el.digitsRow.appendChild(cell);
+      cellRefs.push({
+        root: cell,
+        ringFg: cell.querySelector(".digit-ring-fg"),
+        fill: cell.querySelector(".digit-fill"),
+        text: cell.querySelector(".digit-ring-text"),
+        pct: cell.querySelector(".digit-pct"),
+        cursor: cell.querySelector(".digit-cursor"),
+      });
+    }
+  }
+
+  function renderDigits() {
+    if (cellRefs.length !== 10) buildCells();
+    const total = history.length || 1;
+    const counts = new Array(10).fill(0);
+    history.forEach((d) => counts[d]++);
+    const max = Math.max.apply(null, counts);
+    const min = Math.min.apply(null, counts);
+    const last = history.length ? history[history.length - 1] : null;
+    const circumference = 2 * Math.PI * 18;
+
+    for (let d = 0; d <= 9; d++) {
+      const ref = cellRefs[d];
+      const isActive = last === d;
+      if (activeWinSet) {
+        // The bot has a contract open: ring shows win/lose zones, like Manual Trader.
+        const color = activeWinSet.has(d) ? RISE_GREEN : FALL_RED;
+        ref.ringFg.setAttribute("stroke", color);
+        ref.ringFg.setAttribute("stroke-dasharray", circumference);
+        ref.ringFg.setAttribute("stroke-dashoffset", 0);
+        ref.fill.setAttribute("fill", isActive ? color : "none");
+        ref.fill.setAttribute("fill-opacity", "0.85");
+        ref.text.setAttribute("fill", isActive ? "#FFFFFF" : "#1A1D22");
+      } else {
+        const pct = (counts[d] / total) * 100;
+        const isMax = counts[d] === max && max !== min;
+        const isMin = counts[d] === min && max !== min;
+        ref.ringFg.setAttribute("stroke", isMax ? RISE_GREEN : isMin ? FALL_RED : "#D4A94A");
+        ref.ringFg.setAttribute("stroke-dasharray", circumference);
+        ref.ringFg.setAttribute("stroke-dashoffset", circumference - (pct / 100) * circumference);
+        ref.fill.setAttribute("fill", "none");
+        ref.text.setAttribute("fill", "#1A1D22");
+      }
+      ref.pct.textContent = ((counts[d] / total) * 100).toFixed(1) + "%";
+      ref.root.classList.toggle("digit-cell-active", isActive);
+      ref.cursor.classList.toggle("hidden", !isActive);
+    }
+  }
+
+  async function loadHistoryFor(symbol) {
+    const meta = symbolMeta(symbol);
+    historySymbol = symbol;
+    history = [];
+    renderDigits();
+    try {
+      const res = await derivAPI.send({ ticks_history: symbol, style: "ticks", count: 1000, end: "latest" });
+      const prices = (res.history && res.history.prices) || res.prices || [];
+      if (historySymbol === symbol) {   // user may have switched market meanwhile
+        const places = decimalPlacesFor(meta ? meta.pipSize : 0.01);
+        history = prices.map((p) => Number(Number(p).toFixed(places).slice(-1)));
+        renderDigits();
+      }
+    } catch (err) {
+      console.error("Sniper digits history failed:", err.message);
+    }
+  }
+
+  // Live ticks: shared broadcast from markets.js (no new subscription).
+  document.addEventListener("algotrade:tick", (e) => {
+    if (e.detail.symbol !== historySymbol) return;
+    const meta = symbolMeta(historySymbol);
+    const places = decimalPlacesFor(meta ? meta.pipSize : 0.01);
+    history.push(Number(Number(e.detail.quote).toFixed(places).slice(-1)));
+    if (history.length > 1000) history.shift();
+    if (tabIsVisible()) renderDigits();
+  });
+
+  // ==========================================================
+  // Market dropdown (shared selection — see header note)
+  // ==========================================================
+  function populateMarketSelect() {
+    const synth = (AppState.allSymbols || []).filter(isSynthetic);
+    el.marketSelect.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Choose a synthetic index…";
+    el.marketSelect.appendChild(placeholder);
+    synth.forEach((s) => {
+      const opt = document.createElement("option");
+      opt.value = s.symbol;
+      opt.textContent = s.displayName;
+      el.marketSelect.appendChild(opt);
+    });
+    syncSelection();
+  }
+
+  function syncSelection() {
+    const meta = symbolMeta(AppState.selectedSymbol);
+    const ok = isSynthetic(meta);
+    el.marketSelect.value = ok ? meta.symbol : "";
+    el.marketLine.textContent = ok ? meta.displayName : "No synthetic index selected";
+    el.digitsNote.classList.toggle("hidden", ok);
+    el.digitsLabel.textContent = ok
+      ? "Last digit distribution — last 1,000 ticks · " + meta.displayName
+      : "Last digit distribution — last 1,000 ticks";
+    if (ok && tabIsVisible() && historySymbol !== meta.symbol) loadHistoryFor(meta.symbol);
+    if (!ok) { history = []; historySymbol = null; renderDigits(); }
+  }
+
+  el.marketSelect.addEventListener("change", () => {
+    const symbol = el.marketSelect.value;
+    if (!symbol || session) return;
+    const meta = symbolMeta(symbol);
+    if (typeof selectSymbol === "function") selectSymbol(symbol, meta ? meta.displayName : symbol);
+  });
+
+  document.addEventListener("algotrade:symbol-selected", () => {
+    if (!(AppState.allSymbols || []).length) return;
+    if (el.marketSelect.options.length <= 1) populateMarketSelect(); else syncSelection();
+  });
+
+  // ==========================================================
+  // Settings -> config
+  // ==========================================================
+  function readConfig() {
+    const num = (inp) => Number(inp.value);
+    const meta = symbolMeta(AppState.selectedSymbol);
+    if (!isSynthetic(meta)) { log("Choose a synthetic index in the market dropdown first (digits contracts only work on those)."); return null; }
+
+    const cfg = {
+      currency: activeCurrency(),
+      symbol: meta.symbol,
+      pipDecimals: decimalPlacesFor(meta.pipSize),
+      contract: el.contract.value,
+      prediction: num(el.prediction),
+      duration: num(el.duration),
+      nDigits: num(el.nDigits),
+      compare: el.compare.value,
+      threshold: num(el.threshold),
+      maxRecovery: num(el.maxRec),
+      stake: num(el.stake),
+      mult: num(el.mult),
+      tp: num(el.tp),
+      sl: num(el.sl),
+    };
+    const over = cfg.contract === "DIGITOVER";
+    const isDigit = (v) => Number.isInteger(v) && v >= 0 && v <= 9;
+    let err = null;
+    if (!(cfg.stake >= 0.35)) err = "Stake must be at least 0.35.";
+    else if (!isDigit(cfg.prediction) || cfg.prediction < (over ? 0 : 1) || cfg.prediction > (over ? 8 : 9))
+      err = over ? "Digit Over needs a prediction from 0 to 8." : "Digit Under needs a prediction from 1 to 9.";
+    else if (!isDigit(cfg.threshold)) err = "Pattern digit must be from 0 to 9.";
+    else if (!Number.isInteger(cfg.nDigits) || cfg.nDigits < 1 || cfg.nDigits > 10) err = "Digits in a row must be a whole number from 1 to 10.";
+    else if (!Number.isInteger(cfg.duration) || cfg.duration < 1) err = "Duration must be at least 1 tick.";
+    else if (!Number.isInteger(cfg.maxRecovery) || cfg.maxRecovery < 1) err = "Max recovery trades must be at least 1.";
+    else if (!(cfg.mult >= 1)) err = "Multiplier must be 1 or more.";
+    else if (!(cfg.tp > 0) || !(cfg.sl > 0)) err = "Take profit and stop loss must be above 0.";
+    if (err) { log("Check settings: " + err); return null; }
+    return cfg;
+  }
+
+  // ==========================================================
+  // Run / Stop
+  // ==========================================================
+  const deps = {
+    send: (req) => derivAPI.send(req),
+    subscribe: (req, cb) => derivAPI.subscribe(req, cb),
+    onTick: (fn) => {
+      const h = (e) => fn(e.detail);
+      document.addEventListener("algotrade:tick", h);
+      return () => document.removeEventListener("algotrade:tick", h);
+    },
+    onReconnect: (fn) => {
+      const h = () => fn();
+      document.addEventListener("algotrade:reconnected", h);
+      return () => document.removeEventListener("algotrade:reconnected", h);
+    },
+  };
+
+  function setRunningUI(on) {
+    el.run.disabled = on;
+    el.stop.disabled = !on;
+    el.marketSelect.disabled = on;
+    el.marketSelect.title = on ? "Stop the bot to change market" : "";
+    [el.contract, el.prediction, el.duration, el.nDigits, el.compare, el.threshold,
+     el.maxRec, el.stake, el.mult, el.tp, el.sl].forEach((x) => { x.disabled = on; });
+  }
+
+  function winSetFor(contract, prediction) {
+    const win = new Set();
+    for (let d = 0; d <= 9; d++) {
+      if (contract === "DIGITOVER" ? d > prediction : d < prediction) win.add(d);
+    }
+    return win;
+  }
+
+  el.run.addEventListener("click", () => {
+    if (session) return;
+    if (!derivAPI.ws || derivAPI.ws.readyState !== WebSocket.OPEN) { log("Not connected to Deriv yet."); return; }
+    const cfg = readConfig();
+    if (!cfg) return;
+
+    const acct = activeAccount();
+    if (acct && acct.account_type !== "demo") {
+      if (!confirm("This bot will run on your REAL account and place real trades. Continue?")) return;
+    }
+
+    el.log.innerHTML = "";
+    setRunningUI(true);
+    session = startSniperEngine(deps, cfg, {
+      log: log,
+      status: (s) => { el.status.textContent = s; },
+      stats: (s) => {
+        el.trades.textContent = s.trades;
+        el.wins.textContent = s.wins;
+        el.profit.textContent = s.profit.toFixed(2);
+        el.profit.classList.toggle("sniper-pos", s.profit > 0);
+        el.profit.classList.toggle("sniper-neg", s.profit < 0);
+        el.next.textContent = s.stake.toFixed(2);
+      },
+      bought: () => { activeWinSet = winSetFor(cfg.contract, cfg.prediction); renderDigits(); },
+      settled: () => { activeWinSet = null; renderDigits(); },
+      finished: () => { activeWinSet = null; session = null; setRunningUI(false); renderDigits(); },
+    });
+  });
+
+  el.stop.addEventListener("click", () => { if (session) session.stop(); });
+
+  // Switching accounts rebuilds the session — never leave a bot running across that.
+  document.addEventListener("algotrade:account-ready", () => {
+    if (session) { log("Account changed - bot stopped."); session.stop(); }
+    updateBanner();
+  });
+
+  function updateBanner() {
+    const a = activeAccount();
+    if (!a) { el.banner.textContent = ""; el.banner.className = "sniper-banner hidden"; return; }
+    const demo = a.account_type === "demo";
+    el.banner.textContent = demo ? "Demo account" : "Real account — trades use real money";
+    el.banner.className = "sniper-banner " + (demo ? "sniper-banner-demo" : "sniper-banner-real");
+  }
+
+  // ---------- tab lifecycle ----------
+  document.addEventListener("algotrade:tab-shown", (e) => {
+    if (e.detail.tab !== "sniper-trader") return;
+    updateBanner();
+    if ((AppState.allSymbols || []).length) populateMarketSelect();
+    renderDigits();
+  });
+
+  // After a reconnect the tick feed resumes by itself (markets.js); reload the history to cover the gap.
+  document.addEventListener("algotrade:reconnected", () => {
+    if (historySymbol && tabIsVisible()) loadHistoryFor(historySymbol);
+  });
+
+  buildCells();
+  renderDigits();
+})();
