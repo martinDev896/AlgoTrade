@@ -1,0 +1,125 @@
+/* ==========================================================
+   AlgoTrade — Sniper Trader tab
+   Built only from the project's existing tokens and fonts
+   (Inter / JetBrains Mono, --rise / --fall / --gold) and reuses the
+   existing .trade-row, .trade-input, .trade-select, .btn-buy and
+   digit-widget classes from style.css.
+   ========================================================== */
+
+.sniper-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+/* Same light "trading surface" look as .chart-area */
+.sniper-card {
+  background: #FFFFFF;
+  border: 1px solid #E4E7EB;
+  border-radius: 12px;
+  color: #1A1D22;
+  padding: 1.25rem;
+}
+
+.sniper-card h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
+}
+
+.sniper-sub {
+  font-size: 0.82rem;
+  color: #6B7280;
+  margin: 0 0 0.9rem;
+}
+
+.sniper-sub b {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  color: #1A1D22;
+}
+
+.sniper-banner {
+  display: inline-block;
+  font-size: 0.76rem;
+  font-weight: 600;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  margin-bottom: 0.9rem;
+}
+.sniper-banner-demo { background: rgba(138,147,161,0.15); color: #6B7280; }
+.sniper-banner-real { background: rgba(46,204,143,0.15); color: var(--rise); }
+
+.sniper-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0 0.9rem;
+}
+
+.sniper-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin: 0.3rem 0 1rem;
+}
+.sniper-actions .btn-buy { margin-top: 0; flex: 1; }
+.sniper-actions .btn-buy:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.sniper-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1.4rem;
+  font-size: 0.84rem;
+  color: #6B7280;
+  margin-bottom: 0.7rem;
+}
+.sniper-stats b {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  color: #1A1D22;
+}
+.sniper-stats b.sniper-pos { color: var(--rise); }
+.sniper-stats b.sniper-neg { color: var(--fall); }
+
+.sniper-log {
+  height: 170px;
+  overflow-y: auto;
+  background: #F9FAFB;
+  border: 1px solid #E4E7EB;
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.74rem;
+  line-height: 1.6;
+  color: #1A1D22;
+}
+
+/* Digit widget card (bottom of the tab) */
+.sniper-digits-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.7rem;
+}
+.sniper-digits-head .digits-label { margin: 0; }
+
+.sniper-market-select {
+  width: auto;
+  min-width: 230px;
+  max-width: 100%;
+}
+
+.sniper-note {
+  font-size: 0.82rem;
+  color: #6B7280;
+  margin: 0 0 0.7rem;
+}
+
+.sniper-card .digit-cell { transition: transform 0.15s ease; }
+.sniper-card .digit-cell-active { transform: scale(1.12); }
+
+@media (max-width: 480px) {
+  .sniper-market-select { width: 100%; }
+}
