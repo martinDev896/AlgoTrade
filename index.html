@@ -294,6 +294,12 @@
                 <label for="sn-sl">Stop loss</label>
                 <input id="sn-sl" type="number" min="0.01" step="0.01" value="20" class="trade-input" />
               </div>
+              <div class="trade-row sniper-check">
+                <label for="sn-hardstop"><input id="sn-hardstop" type="checkbox" /> Never place a trade that could take the loss past the stop loss</label>
+              </div>
+              <div class="trade-row sniper-check">
+                <label for="sn-fastread"><input id="sn-fastread" type="checkbox" /> Fast loss reading (buy the recovery trade as soon as the exit tick shows a loss)</label>
+              </div>
             </div>
 
             <div class="sniper-actions">
