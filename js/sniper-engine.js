@@ -83,37 +83,56 @@ function startSniperEngine(deps, cfg, hooks) {
   }
 
   let lastTrace = "";   // how the most recent buy was made (shown in the timing line)
+  let pendingFinal = null; // the previous contract's final "sold" update, while we're acting on the early read
+
+  // Deriv refused the buy because of the quote itself (stale / expired / changed price).
+  const QUOTE_PROBLEM = /proposal|price|expired|invalid|not found/i;
+  // Deriv refused the buy because the previous contract isn't fully closed yet.
+  const NOT_READY = /wait|clos|settl|still|already|open|pending/i;
+  const pause = (t) => new Promise((res) => setTimeout(res, t));
 
   async function buyContract(stake) {
     const parts = [];
-    const cached = quote && quote.stake === stake ? quote.latest : null;
-    if (cached) {
-      parts.push("cached quote, " + ms(quote.updatedAt, now()) + " old");
-      const ta = now();
-      try {
-        const r = await deps.send({ buy: cached.id, price: cached.ask_price });
-        if (r.buy && r.buy.contract_id) { parts.push("buy " + ms(ta, now())); lastTrace = parts.join(" -> "); return r; }
-      } catch (e) {
-        parts.push("buy REJECTED after " + ms(ta, now()) + " (" + ((e && e.message) || "?") + ")");
-        // Only fall back to a fresh quote when the failure is about the
-        // quote itself — never retry an ambiguous failure (avoids a double buy).
-        if (!/proposal|price|expired|invalid|not found/i.test((e && e.message) || "")) { lastTrace = parts.join(" -> "); throw e; }
-      }
-    } else {
+    let cached = quote && quote.stake === stake ? quote.latest : null;
+    if (!cached) {
       parts.push(quote && quote.stake === stake
         ? (quote.error ? "quote error: " + quote.error : "no quote had arrived yet")
         : "no quote prepared for this stake");
     }
-    const tp = now();
-    const res = await deps.send(proposalReq(stake));
-    parts.push("fresh quote " + ms(tp, now()));
-    if (!res.proposal) throw new Error((res.error && res.error.message) || "No price available for this trade.");
-    const tb = now();
-    const r = await deps.send({ buy: res.proposal.id, price: res.proposal.ask_price });
-    parts.push("buy " + ms(tb, now()));
-    lastTrace = parts.join(" -> ");
-    if (!r.buy || !r.buy.contract_id) throw new Error("Trade did not go through.");
-    return r;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        let proposal = cached;
+        if (proposal) {
+          parts.push("cached quote, " + ms(quote.updatedAt, now()) + " old");
+        } else {
+          const tp = now();
+          const res = await deps.send(proposalReq(stake));
+          parts.push("fresh quote " + ms(tp, now()));
+          if (!res.proposal) throw new Error((res.error && res.error.message) || "No price available for this trade.");
+          proposal = res.proposal;
+        }
+        const tb = now();
+        const r = await deps.send({ buy: proposal.id, price: proposal.ask_price });
+        parts.push("buy " + ms(tb, now()));
+        lastTrace = parts.join(" -> ");
+        if (!r.buy || !r.buy.contract_id) throw new Error("Trade did not go through.");
+        return r;
+      } catch (e) {
+        const msg = (e && e.message) || "";
+        parts.push("buy REJECTED (" + msg + ")");
+        // A rejected buy created no contract, so one retry is safe.
+        if (attempt === 0 && pendingFinal && NOT_READY.test(msg)) {
+          const tw = now();
+          await Promise.race([pendingFinal, pause(5000)]);   // let the previous contract close first
+          parts.push("waited " + ms(tw, now()) + " for the previous contract to close");
+          cached = null;
+          continue;
+        }
+        if (attempt === 0 && cached && QUOTE_PROBLEM.test(msg)) { cached = null; continue; }
+        lastTrace = parts.join(" -> ");
+        throw e;
+      }
+    }
   }
 
   // ---------- Contract watching ----------
@@ -255,7 +274,10 @@ function startSniperEngine(deps, cfg, hooks) {
         let won, profit, provisional = false;
         if (first && first.early) {
           won = false; profit = -stakeNow; provisional = true;
-          watch.final.then(function (poc) { reconcile(poc, stakeNow, seenAt); }, function () {});
+          const finalP = watch.final.then(
+            function (poc) { if (pendingFinal === finalP) pendingFinal = null; reconcile(poc, stakeNow, seenAt); },
+            function () { if (pendingFinal === finalP) pendingFinal = null; });
+          pendingFinal = finalP;
         } else {
           won = wonOf(first);
           profit = Number(first.profit) || 0;
