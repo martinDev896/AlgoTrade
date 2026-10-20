@@ -43,6 +43,10 @@ function startSniperEngine(deps, cfg, hooks) {
   let running = true, busy = false, ended = false;
   let quote = null, offTick = null;
   let earlyDisabled = false;
+  // Tick timing (used for the speed readout and for the optional fast loss reading)
+  let lastTickAt = null, tickInterval = null;   // tickInterval: running average gap between ticks (ms)
+  let current = null;                 // the contract we're waiting on: { confirmedAt, ticks:[{digit,at}], watch, firedEarly, kAtFinal }
+  const fast = { enabled: false, k: null, streak: 0, need: 6 };
   let resolveDone;
   const done = new Promise((res) => { resolveDone = res; });
 
@@ -139,11 +143,28 @@ function startSniperEngine(deps, cfg, hooks) {
   const wonOf = (poc) => (poc.status ? poc.status === "won" : Number(poc.profit) > 0);
 
   // Last digit of the exit tick, read from the contract update itself.
+  const EXIT_DISPLAY_FIELDS = ["exit_tick_display_value", "exit_spot_display_value", "sell_spot_display_value"];
+  const EXIT_RAW_FIELDS = ["exit_tick", "exit_spot", "sell_spot"];
   function exitDigitOf(poc) {
-    const shown = poc.exit_tick_display_value;
-    if (shown !== undefined && shown !== null && String(shown) !== "") return Number(String(shown).slice(-1));
-    if (poc.exit_tick !== undefined && poc.exit_tick !== null) return Number(Number(poc.exit_tick).toFixed(cfg.pipDecimals).slice(-1));
+    for (let i = 0; i < EXIT_DISPLAY_FIELDS.length; i++) {
+      const v = poc[EXIT_DISPLAY_FIELDS[i]];
+      if (v !== undefined && v !== null && String(v) !== "") return Number(String(v).slice(-1));
+    }
+    for (let i = 0; i < EXIT_RAW_FIELDS.length; i++) {
+      const v = poc[EXIT_RAW_FIELDS[i]];
+      if (v !== undefined && v !== null && String(v) !== "") return Number(Number(v).toFixed(cfg.pipDecimals).slice(-1));
+    }
     return null;
+  }
+
+  // Diagnostic: shows exactly what Deriv's contract updates contain and when they arrive
+  // (first two contracts of a run only, to keep the log short).
+  let debugContracts = 0;
+  function debugUpdate(poc, openedAt, label) {
+    const f = function (k) { return poc[k] === undefined ? "-" : String(poc[k]); };
+    log("debug " + label + " +" + ms(openedAt, now()) + ": status=" + f("status") + " expired=" + f("is_expired") + " sold=" + f("is_sold") +
+        " exit_tick=" + f("exit_tick") + " exit_display=" + f("exit_tick_display_value") + " sell_spot=" + f("sell_spot") +
+        " tick_count=" + f("tick_count") + " | fields: " + Object.keys(poc).join(","));
   }
   const digitLoses = (d) => (cfg.contract === "DIGITOVER" ? !(d > cfg.prediction) : !(d < cfg.prediction));
 
@@ -154,6 +175,11 @@ function startSniperEngine(deps, cfg, hooks) {
   function watchContract(contractId) {
     let unsub = null, offRe = null, finished = false, earlySent = false;
     let resolveEarly, resolveFinal, rejectFinal;
+    const openedAt = now();
+    const doDebug = debugContracts < 2;
+    let tickTrigger = false;
+    debugContracts++;
+    let lastSig = "";
     const earlyLoss = new Promise((res) => { resolveEarly = res; });
     const final = new Promise((res, rej) => { resolveFinal = res; rejectFinal = rej; });
     const cleanup = function () {
@@ -169,16 +195,29 @@ function startSniperEngine(deps, cfg, hooks) {
         const poc = data.proposal_open_contract;
         if (!poc) return;
         const settled = poc.is_sold || (poc.status && poc.status !== "open");
+        if (doDebug) {
+          const sig = [poc.status, poc.is_expired, poc.is_sold, poc.exit_tick, poc.tick_count].join("|");
+          if (sig !== lastSig) { lastSig = sig; debugUpdate(poc, openedAt, "update"); }   // only when something changed
+        }
         if (!earlyDisabled && !earlySent && (poc.is_expired || settled)) {
           const d = exitDigitOf(poc);
           if (d !== null && digitLoses(d)) { earlySent = true; resolveEarly({ early: true }); }
         }
-        if (settled) { cleanup(); resolveFinal(poc); }
+        if (settled) {
+          if (current && current.watch === api) current.kAtFinal = current.ticks.length;
+          cleanup(); resolveFinal(poc);
+        }
       });
     };
     open();
     offRe = deps.onReconnect ? deps.onReconnect(open) : null;
-    return { earlyLoss: earlyLoss, final: final };
+    const api = {
+      earlyLoss: earlyLoss,
+      final: final,
+      // Fast loss reading: the exit tick has arrived on the tick feed and it is a losing digit.
+      triggerEarly: function () { if (!earlySent && !finished) { earlySent = true; tickTrigger = true; resolveEarly({ early: true, fromTick: true }); } },
+    };
+    return api;
   }
 
   function end() {
@@ -189,6 +228,7 @@ function startSniperEngine(deps, cfg, hooks) {
     closeQuote(quote);
     quote = null;
     status("Stopped");
+    log("Bot stopped.");
     if (hooks.finished) hooks.finished();
     resolveDone();
   }
@@ -199,6 +239,10 @@ function startSniperEngine(deps, cfg, hooks) {
 
   function pushStats() {
     stats({ trades: st.trades, wins: st.wins, profit: st.profit, stake: st.stake });
+  }
+  // Optional hard stop loss: never place a trade whose stake could take the total loss past the stop loss.
+  function wouldBreachStop() {
+    return !!cfg.hardStop && round2(st.profit - st.stake) < -cfg.sl;
   }
   function limitHit() {
     if (st.profit >= cfg.tp) return "Take profit reached. Stopped.";
@@ -226,15 +270,43 @@ function startSniperEngine(deps, cfg, hooks) {
     return null;
   }
 
+  // Fast loss reading: learns how many ticks after the buy the result appears, and switches on only
+  // after the same tick position has predicted the real outcome several trades in a row.
+  function learnFromFinal(rec, actualLoss) {
+    if (!cfg.fastRead || !rec) return;
+    if (fast.enabled) {
+      const t = rec.ticks[fast.k - 1];
+      if (t && digitLoses(t.digit) !== actualLoss) {
+        fast.enabled = false; fast.streak = 0; fast.need = 10;
+        log("Fast loss reading switched off: tick " + fast.k + " did not match Deriv's result. It will re-learn.");
+      }
+      return;
+    }
+    const k = rec.kAtFinal;
+    const t = k ? rec.ticks[k - 1] : null;
+    if (!t) { fast.streak = 0; return; }
+    if (digitLoses(t.digit) === actualLoss) {
+      if (k === fast.k) fast.streak++; else { fast.k = k; fast.streak = 1; }
+    } else { fast.k = null; fast.streak = 0; }
+    if (fast.streak >= fast.need) {
+      fast.enabled = true;
+      log("Fast loss reading ON: the result is decided by tick " + fast.k + " after the buy (confirmed on " + fast.streak + " trades in a row).");
+    }
+  }
+
   // The early (exit-digit) read said LOSS; this checks it against Deriv's final result.
-  function reconcile(poc, stakeAtTrade, seenAt) {
+  function reconcile(poc, stakeAtTrade, seenAt, fromTick, rec) {
     const actual = Number(poc.profit) || 0;
     log("timing: Deriv's final 'sold' update came " + ms(seenAt, now()) + " after the loss was seen from the exit tick.");
+    if (!wonOf(poc)) learnFromFinal(rec, true);
     if (wonOf(poc)) {
       earlyDisabled = true;
+      if (fromTick) { fast.enabled = false; fast.streak = 0; fast.need = 10; }
       st.wins++;
       st.profit = round2(st.profit + actual + stakeAtTrade); // replace the assumed loss with the real result
-      log("WARNING: that trade was actually a WIN. Early reading switched off for the rest of this run.");
+      log(fromTick
+        ? "WARNING: fast loss reading was wrong on that trade (it was a WIN). It is switched off and will re-learn."
+        : "WARNING: that trade was actually a WIN. Early reading switched off for the rest of this run.");
       pushStats();
     } else if (Math.abs(actual + stakeAtTrade) > 0.005) {
       st.profit = round2(st.profit + actual + stakeAtTrade);
@@ -247,7 +319,7 @@ function startSniperEngine(deps, cfg, hooks) {
   async function cycle(tickAt) {
     busy = true;
     let nextBuy = null;   // a recovery buy already sent, waiting to be tracked
-    let lossSeenAt = null;
+    let lossSeenAt = null, lossExitTickAt = null, lossResultLag = 0;
     try {
       do {
         status(st.recovery ? "Recovery trade" : "Pattern trade");
@@ -260,7 +332,14 @@ function startSniperEngine(deps, cfg, hooks) {
           ? "timing: loss seen -> next buy confirmed in " + ms(lossSeenAt, confirmedAt) + " [" + lastTrace + "]"
           : (tickAt !== null ? "timing: pattern tick -> buy confirmed in " + ms(tickAt, confirmedAt) + " [" + lastTrace + "]" : ""));
         tickAt = null;
-        lossSeenAt = null;
+        if (lossSeenAt !== null && lossExitTickAt !== null && tickInterval !== null) {
+          const afterExit = confirmedAt - lossExitTickAt;
+          const spare = Math.round(tickInterval - afterExit);
+          log("speed: result reached us " + Math.round(lossResultLag) + " ms after the exit tick; the next buy was confirmed " + Math.round(afterExit) +
+              " ms after it; ticks come every ~" + Math.round(tickInterval) + " ms -> " +
+              (spare > 0 ? "lands before the next tick (" + spare + " ms to spare)." : "MISSED the next tick by " + (-spare) + " ms."));
+        }
+        lossSeenAt = null; lossExitTickAt = null;
 
         closeQuote(quote); // that quote is used up
         quote = null;
@@ -269,28 +348,37 @@ function startSniperEngine(deps, cfg, hooks) {
         if (hooks.bought) hooks.bought({ stake: stakeNow, contractId: bought.buy.contract_id });
 
         const watch = watchContract(bought.buy.contract_id);
+        current = { confirmedAt: confirmedAt, ticks: [], watch: watch, firedEarly: false, kAtFinal: null };
+        const rec = current;
         const first = await Promise.race([watch.earlyLoss, watch.final]);
         const seenAt = now();
+        const exitTickAt = lastTickAt;   // the most recent tick before the result reached us
         let won, profit, provisional = false;
         if (first && first.early) {
           won = false; profit = -stakeNow; provisional = true;
           const finalP = watch.final.then(
-            function (poc) { if (pendingFinal === finalP) pendingFinal = null; reconcile(poc, stakeNow, seenAt); },
+            function (poc) { if (pendingFinal === finalP) pendingFinal = null; reconcile(poc, stakeNow, seenAt, first.fromTick, rec); },
             function () { if (pendingFinal === finalP) pendingFinal = null; });
           pendingFinal = finalP;
         } else {
           won = wonOf(first);
           profit = Number(first.profit) || 0;
+          learnFromFinal(rec, !won);
         }
 
         const note = applyOutcome(won, profit);
-        const hit = limitHit();
+        let hit = limitHit();
+        if (!hit && wouldBreachStop()) {
+          hit = "Next stake " + st.stake.toFixed(2) + " could take the loss past the stop loss (" + cfg.sl + "). Stopped.";
+        }
         if (hit) running = false;
 
         // Start the next buy BEFORE any screen/log work, so nothing delays it.
         if (running && st.recovery) {
           nextBuy = { promise: buyContract(st.stake), sentAt: now() };
           lossSeenAt = seenAt;
+          lossExitTickAt = exitTickAt;
+          lossResultLag = seenAt - exitTickAt;
         }
 
         if (hooks.settled) hooks.settled();
@@ -314,6 +402,18 @@ function startSniperEngine(deps, cfg, hooks) {
     if (ended || t.symbol !== cfg.symbol) return;
     const arrivedAt = now();
     const digit = Number(Number(t.quote).toFixed(cfg.pipDecimals).slice(-1));
+    if (lastTickAt !== null) {
+      const gap = arrivedAt - lastTickAt;
+      if (gap > 50 && gap < 10000) tickInterval = tickInterval === null ? gap : tickInterval * 0.7 + gap * 0.3;
+    }
+    lastTickAt = arrivedAt;
+    if (current) {
+      current.ticks.push({ digit: digit, at: arrivedAt });
+      if (cfg.fastRead && fast.enabled && !current.firedEarly && current.ticks.length === fast.k && digitLoses(digit)) {
+        current.firedEarly = true;
+        current.watch.triggerEarly();
+      }
+    }
     st.window.push(digit);
     if (st.window.length > cfg.nDigits) st.window.shift();
     if (hooks.tickDigit) hooks.tickDigit(digit);
