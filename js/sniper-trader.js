@@ -27,7 +27,7 @@
     banner: $("sn-banner"), marketLine: $("sn-market-line"),
     contract: $("sn-contract"), prediction: $("sn-prediction"), duration: $("sn-duration"),
     nDigits: $("sn-ndigits"), compare: $("sn-compare"), threshold: $("sn-threshold"),
-    maxRec: $("sn-maxrec"), stake: $("sn-stake"), mult: $("sn-mult"), tp: $("sn-tp"), sl: $("sn-sl"),
+    maxRec: $("sn-maxrec"), stake: $("sn-stake"), mult: $("sn-mult"), tp: $("sn-tp"), sl: $("sn-sl"), hardStop: $("sn-hardstop"), fastRead: $("sn-fastread"),
     run: $("sn-run"), stop: $("sn-stop"),
     status: $("sn-status"), trades: $("sn-trades"), wins: $("sn-wins"), next: $("sn-next"), profit: $("sn-profit"),
     log: $("sn-log"),
@@ -236,6 +236,8 @@
       mult: num(el.mult),
       tp: num(el.tp),
       sl: num(el.sl),
+      hardStop: !!el.hardStop.checked,
+      fastRead: !!el.fastRead.checked,
     };
     const over = cfg.contract === "DIGITOVER";
     const isDigit = (v) => Number.isInteger(v) && v >= 0 && v <= 9;
@@ -249,6 +251,7 @@
     else if (!Number.isInteger(cfg.maxRecovery) || cfg.maxRecovery < 1) err = "Max recovery trades must be at least 1.";
     else if (!(cfg.mult >= 1)) err = "Multiplier must be 1 or more.";
     else if (!(cfg.tp > 0) || !(cfg.sl > 0)) err = "Take profit and stop loss must be above 0.";
+    else if (cfg.hardStop && cfg.stake > cfg.sl) err = "Stake is larger than the stop loss.";
     if (err) { log("Check settings: " + err); return null; }
     return cfg;
   }
@@ -277,7 +280,7 @@
     el.marketSelect.disabled = on;
     el.marketSelect.title = on ? "Stop the bot to change market" : "";
     [el.contract, el.prediction, el.duration, el.nDigits, el.compare, el.threshold,
-     el.maxRec, el.stake, el.mult, el.tp, el.sl].forEach((x) => { x.disabled = on; });
+     el.maxRec, el.stake, el.mult, el.tp, el.sl, el.hardStop, el.fastRead].forEach((x) => { x.disabled = on; });
   }
 
   function winSetFor(contract, prediction) {
