@@ -347,6 +347,19 @@
     if (historySymbol && tabIsVisible()) loadHistoryFor(historySymbol);
   });
 
+  // ---------- layout safety ----------
+  // Tells the stylesheet when this tab is on screen, so sniper.css can keep the
+  // page footer below the content (see "Layout safety" in sniper.css).
+  const accountScreen = $("account-screen");
+  function syncLayoutClass() {
+    const on = !tabEl.classList.contains("hidden") && !!accountScreen && !accountScreen.classList.contains("hidden");
+    document.body.classList.toggle("sniper-active", on);
+  }
+  const layoutObserver = new MutationObserver(syncLayoutClass);
+  layoutObserver.observe(tabEl, { attributes: true, attributeFilter: ["class"] });
+  if (accountScreen) layoutObserver.observe(accountScreen, { attributes: true, attributeFilter: ["class"] });
+  syncLayoutClass();
+
   buildCells();
   renderDigits();
 })();
