@@ -64,11 +64,11 @@ function startSniperEngine(deps, cfg, hooks) {
   // A live quote kept ready for the NEXT stake, so a buy can go out the
   // instant it's needed (the same cached-proposal approach Manual Trader uses).
   function openQuote(stake) {
-    const q = { stake: stake, latest: null, unsub: null };
+    const q = { stake: stake, latest: null, updatedAt: null, error: null, unsub: null };
     try {
       q.unsub = deps.subscribe(proposalReq(stake), function (data) {
-        if (data.error) { q.latest = null; return; }
-        if (data.proposal) q.latest = data.proposal;
+        if (data.error) { q.latest = null; q.error = data.error.message || "quote error"; return; }
+        if (data.proposal) { q.latest = data.proposal; q.updatedAt = now(); q.error = null; }
       });
     } catch (_) { /* no cached quote: a fresh one is requested at buy time */ }
     return q;
@@ -82,21 +82,36 @@ function startSniperEngine(deps, cfg, hooks) {
     quote = openQuote(stake);
   }
 
+  let lastTrace = "";   // how the most recent buy was made (shown in the timing line)
+
   async function buyContract(stake) {
+    const parts = [];
     const cached = quote && quote.stake === stake ? quote.latest : null;
     if (cached) {
+      parts.push("cached quote, " + ms(quote.updatedAt, now()) + " old");
+      const ta = now();
       try {
         const r = await deps.send({ buy: cached.id, price: cached.ask_price });
-        if (r.buy && r.buy.contract_id) return r;
+        if (r.buy && r.buy.contract_id) { parts.push("buy " + ms(ta, now())); lastTrace = parts.join(" -> "); return r; }
       } catch (e) {
+        parts.push("buy REJECTED after " + ms(ta, now()) + " (" + ((e && e.message) || "?") + ")");
         // Only fall back to a fresh quote when the failure is about the
         // quote itself — never retry an ambiguous failure (avoids a double buy).
-        if (!/proposal|price|expired|invalid|not found/i.test((e && e.message) || "")) throw e;
+        if (!/proposal|price|expired|invalid|not found/i.test((e && e.message) || "")) { lastTrace = parts.join(" -> "); throw e; }
       }
+    } else {
+      parts.push(quote && quote.stake === stake
+        ? (quote.error ? "quote error: " + quote.error : "no quote had arrived yet")
+        : "no quote prepared for this stake");
     }
+    const tp = now();
     const res = await deps.send(proposalReq(stake));
+    parts.push("fresh quote " + ms(tp, now()));
     if (!res.proposal) throw new Error((res.error && res.error.message) || "No price available for this trade.");
+    const tb = now();
     const r = await deps.send({ buy: res.proposal.id, price: res.proposal.ask_price });
+    parts.push("buy " + ms(tb, now()));
+    lastTrace = parts.join(" -> ");
     if (!r.buy || !r.buy.contract_id) throw new Error("Trade did not go through.");
     return r;
   }
@@ -223,8 +238,8 @@ function startSniperEngine(deps, cfg, hooks) {
         nextBuy = null;
         const confirmedAt = now();
         log(lossSeenAt !== null
-          ? "timing: loss seen -> next buy confirmed in " + ms(lossSeenAt, confirmedAt) + " (request took " + ms(sentAt, confirmedAt) + ")."
-          : (tickAt !== null ? "timing: pattern tick -> buy confirmed in " + ms(tickAt, confirmedAt) + "." : ""));
+          ? "timing: loss seen -> next buy confirmed in " + ms(lossSeenAt, confirmedAt) + " [" + lastTrace + "]"
+          : (tickAt !== null ? "timing: pattern tick -> buy confirmed in " + ms(tickAt, confirmedAt) + " [" + lastTrace + "]" : ""));
         tickAt = null;
         lossSeenAt = null;
 
