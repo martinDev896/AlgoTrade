@@ -39,7 +39,10 @@ function startSniperEngine(deps, cfg, hooks) {
   const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
   const ms = (a, b) => Math.round(b - a) + " ms";
 
-  const st = { stake: cfg.stake, recovery: false, recCount: 0, profit: 0, trades: 0, wins: 0, window: [] };
+  // recoveryLocked: set when a full set of recovery trades fails. While locked, the bot only
+  // takes pattern trades (martingale still running) and a loss does NOT start recovery mode.
+  // The first win clears it, and only then can recovery mode start again.
+  const st = { stake: cfg.stake, recovery: false, recCount: 0, recoveryLocked: false, profit: 0, trades: 0, wins: 0, window: [] };
   let running = true, busy = false, ended = false;
   let quote = null, offTick = null;
   let earlyDisabled = false;
@@ -251,22 +254,29 @@ function startSniperEngine(deps, cfg, hooks) {
   }
 
   // Applies one trade's result to the martingale / recovery state.
+  //   - Pattern trade loses (not locked)  -> recovery mode ON (up to maxRecovery trades, right away).
+  //   - Recovery trades all lose          -> recovery OFF and LOCKED: only pattern trades until one wins.
+  //   - Pattern trade loses while locked  -> stays pattern-only (stake keeps growing, no recovery).
+  //   - Any win                           -> stake reset, recovery unlocked (can start again on the next loss).
   function applyOutcome(won, profit) {
     st.trades++;
     st.profit = round2(st.profit + profit);
     if (won) {
-      st.wins++; st.stake = cfg.stake; st.recovery = false; st.recCount = 0;
-      return null;
+      const wasLocked = st.recoveryLocked;
+      st.wins++; st.stake = cfg.stake; st.recovery = false; st.recCount = 0; st.recoveryLocked = false;
+      return wasLocked ? "Pattern trade won - stake reset and recovery mode is armed again." : null;
     }
     const wasRecovery = st.recovery;
     st.stake = round2(st.stake * cfg.mult); // martingale: only a win resets it
     if (wasRecovery) {
       st.recCount++;
       if (st.recCount >= cfg.maxRecovery) {
-        st.recovery = false; st.recCount = 0;
-        return "Recovery limit reached - waiting for the pattern again (stake kept).";
+        st.recovery = false; st.recCount = 0; st.recoveryLocked = true;
+        return "Recovery limit reached - pattern trades only, recovery mode stays off until a pattern trade wins (stake kept).";
       }
-    } else { st.recovery = true; st.recCount = 0; }
+    } else if (!st.recoveryLocked) {
+      st.recovery = true; st.recCount = 0;
+    }
     return null;
   }
 
