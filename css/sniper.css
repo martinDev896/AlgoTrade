@@ -123,3 +123,61 @@
 @media (max-width: 480px) {
   .sniper-market-select { width: 100%; }
 }
+
+/* ==========================================================
+   Layout safety while the Sniper tab is open
+   (body.sniper-active is switched on by sniper-trader.js only when
+   this tab is visible). The tab is taller than one screen, so the page
+   must be allowed to grow and scroll, and the footer must sit BELOW the
+   content in normal flow — never fixed, sticky or overlapping — so it can
+   never cover the Run / Stop buttons or the digit widget.
+   ========================================================== */
+html:has(body.sniper-active) {
+  height: auto !important;
+  overflow-y: auto !important;
+}
+
+body.sniper-active {
+  height: auto !important;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: visible !important;
+}
+
+body.sniper-active main {
+  flex: 1 0 auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+  align-items: flex-start !important;
+}
+
+body.sniper-active .account-panel,
+body.sniper-active #tab-sniper-trader {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+body.sniper-active footer {
+  position: static !important;
+  flex-shrink: 0;
+  transform: none !important;
+  padding-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* The workspace always paints above any neighbouring layer. */
+.sniper-workspace {
+  position: relative;
+  z-index: 1;
+  padding-bottom: 1rem;
+}
+
+/* One tap = one click on every device (no 300ms delay / double-tap zoom). */
+.sniper-actions .btn-buy,
+.sniper-market-select {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.sniper-actions { position: relative; z-index: 2; }
