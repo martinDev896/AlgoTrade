@@ -165,9 +165,6 @@ function startSniperEngine(deps, cfg, hooks) {
   let debugContracts = 0;
   function debugUpdate(poc, openedAt, label) {
     const f = function (k) { return poc[k] === undefined ? "-" : String(poc[k]); };
-    log("debug " + label + " +" + ms(openedAt, now()) + ": status=" + f("status") + " expired=" + f("is_expired") + " sold=" + f("is_sold") +
-        " exit_tick=" + f("exit_tick") + " exit_display=" + f("exit_tick_display_value") + " sell_spot=" + f("sell_spot") +
-        " tick_count=" + f("tick_count") + " | fields: " + Object.keys(poc).join(","));
   }
   const digitLoses = (d) => (cfg.contract === "DIGITOVER" ? !(d > cfg.prediction) : !(d < cfg.prediction));
 
@@ -288,7 +285,6 @@ function startSniperEngine(deps, cfg, hooks) {
       const t = rec.ticks[fast.k - 1];
       if (t && digitLoses(t.digit) !== actualLoss) {
         fast.enabled = false; fast.streak = 0; fast.need = 10;
-        log("Fast loss reading switched off: tick " + fast.k + " did not match Deriv's result. It will re-learn.");
       }
       return;
     }
@@ -300,23 +296,18 @@ function startSniperEngine(deps, cfg, hooks) {
     } else { fast.k = null; fast.streak = 0; }
     if (fast.streak >= fast.need) {
       fast.enabled = true;
-      log("Fast loss reading ON: the result is decided by tick " + fast.k + " after the buy (confirmed on " + fast.streak + " trades in a row).");
     }
   }
 
   // The early (exit-digit) read said LOSS; this checks it against Deriv's final result.
   function reconcile(poc, stakeAtTrade, seenAt, fromTick, rec) {
     const actual = Number(poc.profit) || 0;
-    log("timing: Deriv's final 'sold' update came " + ms(seenAt, now()) + " after the loss was seen from the exit tick.");
     if (!wonOf(poc)) learnFromFinal(rec, true);
     if (wonOf(poc)) {
       earlyDisabled = true;
       if (fromTick) { fast.enabled = false; fast.streak = 0; fast.need = 10; }
       st.wins++;
       st.profit = round2(st.profit + actual + stakeAtTrade); // replace the assumed loss with the real result
-      log(fromTick
-        ? "WARNING: fast loss reading was wrong on that trade (it was a WIN). It is switched off and will re-learn."
-        : "WARNING: that trade was actually a WIN. Early reading switched off for the rest of this run.");
       pushStats();
     } else if (Math.abs(actual + stakeAtTrade) > 0.005) {
       st.profit = round2(st.profit + actual + stakeAtTrade);
@@ -338,16 +329,10 @@ function startSniperEngine(deps, cfg, hooks) {
         const bought = await (nextBuy ? nextBuy.promise : buyContract(stakeNow));
         nextBuy = null;
         const confirmedAt = now();
-        log(lossSeenAt !== null
-          ? "timing: loss seen -> next buy confirmed in " + ms(lossSeenAt, confirmedAt) + " [" + lastTrace + "]"
-          : (tickAt !== null ? "timing: pattern tick -> buy confirmed in " + ms(tickAt, confirmedAt) + " [" + lastTrace + "]" : ""));
         tickAt = null;
         if (lossSeenAt !== null && lossExitTickAt !== null && tickInterval !== null) {
           const afterExit = confirmedAt - lossExitTickAt;
           const spare = Math.round(tickInterval - afterExit);
-          log("speed: result reached us " + Math.round(lossResultLag) + " ms after the exit tick; the next buy was confirmed " + Math.round(afterExit) +
-              " ms after it; ticks come every ~" + Math.round(tickInterval) + " ms -> " +
-              (spare > 0 ? "lands before the next tick (" + spare + " ms to spare)." : "MISSED the next tick by " + (-spare) + " ms."));
         }
         lossSeenAt = null; lossExitTickAt = null;
 
@@ -395,7 +380,6 @@ function startSniperEngine(deps, cfg, hooks) {
         pushStats();
         log((won ? "WON " : "LOST ") + profit.toFixed(2) + (provisional ? " (from exit tick)" : "") +
             " | total " + st.profit.toFixed(2) + " | next stake " + st.stake.toFixed(2));
-        if (note) log(note);
         if (hit) log(hit);
         else if (!nextBuy) ensureQuote(st.stake); // keep a live quote ready for whatever comes next
         // Recovery loop: the next buy is already on its way — track it, no waiting for a tick.
