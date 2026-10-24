@@ -1,6 +1,7 @@
 // ==========================================================
 // AlgoTrade — digits.js
-// Shows the last-digit distribution over the last 1,000 ticks for
+// Shows the last-digit distribution over the last 1,000 ticks (or fewer —
+// a dropdown narrows it to 500 / 250 / 100 / 50 / 25 for live analysis) for
 // synthetic index markets (where Digits contracts — Matches/Differs,
 // Over/Under — actually apply). Each digit 0-9 gets a circular
 // percentage ring, and a small cursor sits under whichever digit the
@@ -9,6 +10,19 @@
 
 const digitsWidgetEl = document.getElementById("digits-widget");
 const digitsRowEl = document.getElementById("digits-row");
+const digitsWindowEl = document.getElementById("digits-window");
+const digitsLabelEl = document.getElementById("digits-label");
+
+// How many of the most recent ticks the percentages are calculated from.
+// The full 1,000 are always kept in memory; this only changes what is counted.
+const DIGIT_WINDOW_CHOICES = [1000, 500, 250, 100, 50, 25];
+const DIGIT_WINDOW_KEY = "algotrade.digitWindow";
+let digitWindow = (function () {
+  try {
+    const saved = Number(localStorage.getItem(DIGIT_WINDOW_KEY));
+    return DIGIT_WINDOW_CHOICES.indexOf(saved) !== -1 ? saved : 1000;
+  } catch (_) { return 1000; }
+})();
 
 let digitHistory = []; // rolling window of last-digit values (0-9), most recent last
 let currentPipSize = 0.001;
@@ -27,10 +41,20 @@ function lastDigitOf(quote, pipSize) {
   return Number(fixed.slice(-1));
 }
 
+// The slice of history the percentages are based on (the newest `digitWindow` ticks).
+function digitsInWindow() {
+  return digitHistory.length > digitWindow ? digitHistory.slice(-digitWindow) : digitHistory;
+}
+
 function computeCounts() {
   const counts = new Array(10).fill(0);
-  digitHistory.forEach((d) => counts[d]++);
+  digitsInWindow().forEach((d) => counts[d]++);
   return counts;
+}
+
+function updateDigitsLabel() {
+  if (digitsLabelEl) digitsLabelEl.textContent = "Last digit distribution — last " + digitWindow.toLocaleString("en-US") + " ticks";
+  if (digitsWindowEl) digitsWindowEl.value = String(digitWindow);
 }
 
 let cellRefs = []; // persistent references to each digit's DOM pieces
@@ -111,7 +135,7 @@ function buildDigitCells() {
 function renderDigits() {
   if (cellRefs.length !== 10) buildDigitCells();
 
-  const total = digitHistory.length || 1;
+  const total = digitsInWindow().length || 1;
   const counts = computeCounts();
   const max = Math.max(...counts);
   const min = Math.min(...counts);
@@ -136,7 +160,7 @@ function renderDigits() {
       ref.fill.setAttribute("fill-opacity", "0.85");
       ref.text.setAttribute("fill", isActive ? "#FFFFFF" : "#1A1D22");
     } else {
-      // No open contract: back to normal last-1000-ticks frequency stats.
+      // No open contract: back to normal frequency stats over the selected number of ticks.
       const pct = (counts[d] / total) * 100;
       const dashOffset = circumference - (pct / 100) * circumference;
       const isMax = counts[d] === max && max !== min;
@@ -243,3 +267,19 @@ document.addEventListener("algotrade:trade-group-changed", (e) => {
 document.addEventListener("algotrade:reconnected", () => {
   if (digitsActive && currentDigitsSymbol) loadDigitsFor(currentDigitsSymbol, currentPipSize);
 });
+
+// ---- Tick-window dropdown (shared with the Sniper Trader widget) ----
+function setDigitWindow(n, announce) {
+  if (DIGIT_WINDOW_CHOICES.indexOf(n) === -1 || n === digitWindow) { updateDigitsLabel(); return; }
+  digitWindow = n;
+  try { localStorage.setItem(DIGIT_WINDOW_KEY, String(n)); } catch (_) { /* private mode: setting just isn't remembered */ }
+  updateDigitsLabel();
+  renderDigits();
+  if (announce) document.dispatchEvent(new CustomEvent("algotrade:digit-window-changed", { detail: { count: n } }));
+}
+
+if (digitsWindowEl) {
+  digitsWindowEl.addEventListener("change", () => setDigitWindow(Number(digitsWindowEl.value), true));
+}
+document.addEventListener("algotrade:digit-window-changed", (e) => setDigitWindow(e.detail.count, false));
+updateDigitsLabel();
