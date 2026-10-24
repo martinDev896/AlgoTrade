@@ -181,3 +181,44 @@ body.sniper-active footer {
   -webkit-tap-highlight-color: transparent;
 }
 .sniper-actions { position: relative; z-index: 2; }
+
+/* Full-width checkbox row inside the settings grid */
+.sniper-check { grid-column: 1 / -1; }
+.sniper-check label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+.sniper-check input[type="checkbox"] { width: auto; margin: 0; }
+
+/* ==========================================================
+   Tick-window dropdown on the digit widgets (Manual Trader + Sniper Trader)
+   ========================================================== */
+.digits-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+.digits-head .digits-label { margin: 0; }
+
+.digits-window-select,
+.sniper-window-select {
+  width: auto;
+  min-width: 110px;
+}
+
+.sniper-digits-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 480px) {
+  .sniper-digits-controls { width: 100%; }
+  .sniper-digits-controls .trade-select { flex: 1; min-width: 0; }
+}
