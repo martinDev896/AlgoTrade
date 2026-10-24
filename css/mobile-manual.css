@@ -95,3 +95,23 @@
   .digit-cell-active { transform: scale(1.12); }
   .digit-cursor { bottom: -8px; border-left-width: 5px; border-right-width: 5px; border-bottom-width: 6px; }
 }
+
+/* ==========================================================
+   Digits markets on phones: no chart.
+   When the digit widget is showing (a synthetic index with the Digits
+   trade type), the chart and its "Candles" button are hidden, so the
+   market selector + price sit directly above the digit widget.
+   - Phones in portrait (up to 640px wide) and phones in landscape
+     (up to 900px wide AND at most 500px tall).
+   - Tablets and desktops keep the chart.
+   - Rise/Fall, Accumulators and non-digit markets keep the chart on
+     phones too (the digit widget is hidden there).
+   - The chart keeps running in the background; it re-sizes itself
+     automatically when it is shown again.
+   ========================================================== */
+@media (max-width: 640px), (max-width: 900px) and (max-height: 500px) {
+  .chart-area:has(#digits-widget:not(.hidden)) #chart-container,
+  .chart-area:has(#digits-widget:not(.hidden)) #chart-toolbar {
+    display: none !important;
+  }
+}
