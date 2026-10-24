@@ -104,7 +104,12 @@
             </div>
 
             <div id="digits-widget" class="digits-widget hidden">
-              <p class="digits-label">Last digit distribution — last 1,000 ticks</p>
+              <div class="digits-head">
+                <p id="digits-label" class="digits-label">Last digit distribution — last 1,000 ticks</p>
+                <select id="digits-window" class="trade-select digits-window-select" aria-label="Number of ticks used for the percentages">
+                  <option value="1000" selected>1,000 ticks</option><option value="500">500 ticks</option><option value="250">250 ticks</option><option value="100">100 ticks</option><option value="50">50 ticks</option><option value="25">25 ticks</option>
+                </select>
+              </div>
               <div id="digits-row" class="digits-row">
                 <!-- digit circles injected here -->
               </div>
@@ -322,7 +327,12 @@
           <div class="sniper-card sniper-digits">
             <div class="sniper-digits-head">
               <p id="sn-digits-label" class="digits-label">Last digit distribution — last 1,000 ticks</p>
-              <select id="sn-market-select" class="trade-select sniper-market-select"></select>
+              <div class="sniper-digits-controls">
+                <select id="sn-window" class="trade-select sniper-window-select" aria-label="Number of ticks used for the percentages">
+                  <option value="1000" selected>1,000 ticks</option><option value="500">500 ticks</option><option value="250">250 ticks</option><option value="100">100 ticks</option><option value="50">50 ticks</option><option value="25">25 ticks</option>
+                </select>
+                <select id="sn-market-select" class="trade-select sniper-market-select"></select>
+              </div>
             </div>
             <p id="sn-digits-note" class="sniper-note hidden">Pick a synthetic index to see its digit percentages.</p>
             <div id="sn-digits-row" class="digits-row"></div>
