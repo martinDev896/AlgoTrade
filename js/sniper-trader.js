@@ -32,7 +32,7 @@
     status: $("sn-status"), trades: $("sn-trades"), wins: $("sn-wins"), next: $("sn-next"), profit: $("sn-profit"),
     log: $("sn-log"),
     digitsRow: $("sn-digits-row"), digitsLabel: $("sn-digits-label"), digitsNote: $("sn-digits-note"),
-    marketSelect: $("sn-market-select"),
+    marketSelect: $("sn-market-select"), windowSelect: $("sn-window"),
   };
 
   let session = null;           // running engine, if any
@@ -74,7 +74,16 @@
   // ==========================================================
   // Digit distribution widget (same look + same math as digits.js)
   // ==========================================================
-  let history = [];              // last-digit values, most recent last
+  // How many of the newest ticks the percentages use (shared with the Manual Trader widget).
+  const WINDOW_CHOICES = [1000, 500, 250, 100, 50, 25];
+  const WINDOW_KEY = "algotrade.digitWindow";
+  let digitWindow = (function () {
+    try {
+      const saved = Number(localStorage.getItem(WINDOW_KEY));
+      return WINDOW_CHOICES.indexOf(saved) !== -1 ? saved : 1000;
+    } catch (_) { return 1000; }
+  })();
+  let history = [];              // last-digit values, most recent last (always up to 1,000 kept)
   let historySymbol = null;      // which symbol `history` belongs to
   let cellRefs = [];
 
@@ -105,9 +114,10 @@
 
   function renderDigits() {
     if (cellRefs.length !== 10) buildCells();
-    const total = history.length || 1;
+    const shown = history.length > digitWindow ? history.slice(-digitWindow) : history;
+    const total = shown.length || 1;
     const counts = new Array(10).fill(0);
-    history.forEach((d) => counts[d]++);
+    shown.forEach((d) => counts[d]++);
     const max = Math.max.apply(null, counts);
     const min = Math.min.apply(null, counts);
     const last = history.length ? history[history.length - 1] : null;
@@ -194,12 +204,25 @@
     el.marketSelect.value = ok ? meta.symbol : "";
     el.marketLine.textContent = ok ? meta.displayName : "No synthetic index selected";
     el.digitsNote.classList.toggle("hidden", ok);
-    el.digitsLabel.textContent = ok
-      ? "Last digit distribution — last 1,000 ticks · " + meta.displayName
-      : "Last digit distribution — last 1,000 ticks";
+    el.digitsLabel.textContent = "Last digit distribution — last " + digitWindow.toLocaleString("en-US") + " ticks" +
+      (ok ? " · " + meta.displayName : "");
     if (ok && tabIsVisible() && historySymbol !== meta.symbol) loadHistoryFor(meta.symbol);
     if (!ok) { history = []; historySymbol = null; renderDigits(); }
   }
+
+  function setWindow(n, announce) {
+    el.windowSelect.value = String(digitWindow);
+    if (WINDOW_CHOICES.indexOf(n) === -1 || n === digitWindow) return;
+    digitWindow = n;
+    try { localStorage.setItem(WINDOW_KEY, String(n)); } catch (_) { /* setting just isn't remembered */ }
+    el.windowSelect.value = String(n);
+    syncSelection();            // refreshes the label
+    renderDigits();
+    if (announce) document.dispatchEvent(new CustomEvent("algotrade:digit-window-changed", { detail: { count: n } }));
+  }
+  el.windowSelect.value = String(digitWindow);
+  el.windowSelect.addEventListener("change", () => setWindow(Number(el.windowSelect.value), true));
+  document.addEventListener("algotrade:digit-window-changed", (e) => setWindow(e.detail.count, false));
 
   el.marketSelect.addEventListener("change", () => {
     const symbol = el.marketSelect.value;
