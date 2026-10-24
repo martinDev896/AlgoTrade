@@ -17,6 +17,7 @@
 <script src="https://cdn.jsdelivr.net/npm/blockly@10.4.3/msg/en.js"></script>
 <link rel="stylesheet" href="css/style.css" />
 <link rel="stylesheet" href="css/sniper.css" />
+<link rel="stylesheet" href="css/mobile-manual.css" />
 </head>
 <body>
 
@@ -105,7 +106,7 @@
 
             <div id="digits-widget" class="digits-widget hidden">
               <div class="digits-head">
-                <p id="digits-label" class="digits-label">Last digit distribution — last 1,000 ticks</p>
+                <p id="digits-label" class="digits-label">Last digit distribution<span class="digits-label-suffix"> — last 1,000 ticks</span></p>
                 <select id="digits-window" class="trade-select digits-window-select" aria-label="Number of ticks used for the percentages">
                   <option value="1000" selected>1,000 ticks</option><option value="500">500 ticks</option><option value="250">250 ticks</option><option value="100">100 ticks</option><option value="50">50 ticks</option><option value="25">25 ticks</option>
                 </select>
