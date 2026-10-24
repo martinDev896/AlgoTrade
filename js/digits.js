@@ -53,7 +53,14 @@ function computeCounts() {
 }
 
 function updateDigitsLabel() {
-  if (digitsLabelEl) digitsLabelEl.textContent = "Last digit distribution — last " + digitWindow.toLocaleString("en-US") + " ticks";
+  if (digitsLabelEl) {
+    // The "— last N ticks" part is its own span so phones can hide it (the dropdown already shows N).
+    digitsLabelEl.textContent = "Last digit distribution";
+    const suffix = document.createElement("span");
+    suffix.className = "digits-label-suffix";
+    suffix.textContent = " — last " + digitWindow.toLocaleString("en-US") + " ticks";
+    digitsLabelEl.appendChild(suffix);
+  }
   if (digitsWindowEl) digitsWindowEl.value = String(digitWindow);
 }
 
