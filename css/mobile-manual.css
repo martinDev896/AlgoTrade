@@ -115,3 +115,55 @@
     display: none !important;
   }
 }
+
+/* ==========================================================
+   Phones: compact trading panel + buttons, and a tab bar that fits
+   (no sideways scrolling anywhere).
+   The panel itself never overflowed sideways in testing. The only thing
+   on a phone that scrolled sideways was the top tab bar (four tabs wider
+   than the screen, which is also why "Sniper Trader" was cut off), so the
+   four tabs now share the width equally and wrap onto two lines if needed.
+   ========================================================== */
+@media (max-width: 640px) {
+  /* Tab bar: four equal tabs, labels wrap instead of scrolling */
+  .app-tabs { gap: 0; padding: 0.1rem 0.25rem 0; overflow-x: hidden; }
+  .app-tabs .app-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    white-space: normal;
+    text-align: center;
+    font-size: 0.74rem;
+    line-height: 1.15;
+    padding: 0.4rem 0.15rem;
+  }
+
+  /* Trading panel: tighter box and spacing */
+  .trade-panel { padding: 0.6rem; border-radius: 10px; }
+  .trade-panel h3 { margin: 0 0 0.45rem; }
+
+  .trade-type-tabs { gap: 0.3rem; margin-bottom: 0.5rem; }
+  .trade-type-tab { font-size: 0.74rem; padding: 0.4rem 0.2rem; border-radius: 7px; }
+  .digit-pair-tabs { gap: 0.25rem; margin-bottom: 0.5rem; }
+  .pair-tab { font-size: 0.66rem; padding: 0.38rem 0.1rem; border-radius: 6px; }
+
+  .trade-row { margin-bottom: 0.5rem; }
+  .trade-row label { font-size: 0.68rem; margin-bottom: 0.2rem; }
+  .trade-row-split { gap: 0.4rem; }
+  .trade-input, .trade-select { padding: 0.4rem 0.55rem; font-size: 0.82rem; border-radius: 6px; }
+  .trade-digit-row { gap: 0.4rem; }
+
+  .growth-rate-row { gap: 0.25rem; }
+  .growth-rate-btn { font-size: 0.72rem; padding: 0.38rem 0.1rem; }
+  .take-profit-label { font-size: 0.76rem; margin-bottom: 0.35rem; }
+
+  /* Buy / Sell buttons: smaller, still a comfortable 44px+ touch target */
+  .trade-direction-row { gap: 0.4rem; margin-bottom: 0.4rem; }
+  .btn-direction { padding: 0.4rem 0.3rem; border-radius: 8px; gap: 0.05rem; min-height: 44px; font-size: 0.78rem; border-width: 1.5px; }
+  .btn-direction-label { font-size: 0.8rem; }
+  .btn-direction-payout { font-size: 0.64rem; }
+  .btn-buy { padding: 0.5rem; margin-top: 0.4rem; border-radius: 8px; min-height: 44px; }
+  .btn-buy .btn-direction-label { font-size: 0.88rem; }
+  .btn-buy .btn-direction-payout { font-size: 0.66rem; }
+
+  .trade-result { margin-top: 0.5rem; font-size: 0.74rem; }
+}
