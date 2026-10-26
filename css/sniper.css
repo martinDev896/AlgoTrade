@@ -222,3 +222,52 @@ body.sniper-active footer {
   .sniper-digits-controls { width: 100%; }
   .sniper-digits-controls .trade-select { flex: 1; min-width: 0; }
 }
+
+/* ==========================================================
+   Sniper bot picker: two cards side by side
+   ========================================================== */
+.sniper-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+.sniper-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  text-align: left;
+  background: #FFFFFF;
+  border: 1px solid #E4E7EB;
+  border-radius: 12px;
+  padding: 0.8rem 0.9rem;
+  color: #1A1D22;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.sniper-pick:hover { border-color: var(--gold); }
+.sniper-pick.active {
+  border-color: var(--gold);
+  background: rgba(212, 169, 74, 0.08);
+  box-shadow: 0 0 0 1px var(--gold) inset;
+}
+.sniper-pick-title { font-weight: 600; font-size: 0.92rem; }
+.sniper-pick-desc { font-size: 0.74rem; color: #6B7280; line-height: 1.3; }
+.sniper-pick-badge {
+  font-size: 0.64rem;
+  font-weight: 700;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(46, 204, 143, 0.15);
+  color: var(--rise);
+}
+.sniper-pick-badge.hidden { display: none; }
+
+@media (max-width: 480px) {
+  .sniper-picker { gap: 0.4rem; }
+  .sniper-pick { padding: 0.5rem 0.6rem; border-radius: 10px; }
+  .sniper-pick-title { font-size: 0.76rem; }
+  .sniper-pick-desc { font-size: 0.62rem; }
+}
