@@ -244,8 +244,22 @@
       <div id="tab-sniper-trader" class="tab-panel hidden">
         <div class="sniper-workspace">
 
-          <div class="sniper-card">
-            <h3>Sniper Trader</h3>
+          <!-- Bot picker: two cards side by side. Click one to open its interface. -->
+          <div class="sniper-picker" role="group" aria-label="Choose a sniper bot">
+            <button type="button" id="sn-pick-ou" class="sniper-pick active" data-bot="overunder" aria-pressed="true">
+              <span class="sniper-pick-title">Over/Under Sniper Trader</span>
+              <span class="sniper-pick-desc">Waits for a run of high or low digits, then trades Over or Under.</span>
+              <span class="sniper-pick-badge hidden">● Running</span>
+            </button>
+            <button type="button" id="sn-pick-eo" class="sniper-pick" data-bot="evenodd" aria-pressed="false">
+              <span class="sniper-pick-title">Even/Odd Sniper Trader</span>
+              <span class="sniper-pick-desc">Trades Even after a run of odd digits, and Odd after a run of even digits.</span>
+              <span class="sniper-pick-badge hidden">● Running</span>
+            </button>
+          </div>
+
+          <div id="sn-ou-card" class="sniper-card">
+            <h3>Over/Under Sniper Trader</h3>
             <p class="sniper-sub">Waits for a digit pattern on <b id="sn-market-line">—</b>, then trades. Change the market with the dropdown under the digit widget below.</p>
             <div id="sn-banner" class="sniper-banner hidden"></div>
 
@@ -324,6 +338,77 @@
             <div id="sn-log" class="sniper-log"></div>
           </div>
 
+          <!-- ============ EVEN/ODD SNIPER TRADER ============ -->
+          <div id="sn-eo-card" class="sniper-card hidden">
+            <h3>Even/Odd Sniper Trader</h3>
+            <p class="sniper-sub">Trading <b id="eo-market-line">—</b>. <span id="eo-hint"></span> Change the market with the dropdown under the digit widget below.</p>
+            <div id="eo-banner" class="sniper-banner hidden"></div>
+
+            <div class="sniper-grid">
+              <div class="trade-row">
+                <label for="eo-mode">Contract type</label>
+                <select id="eo-mode" class="trade-select">
+                  <option value="both">Both (Even &amp; Odd)</option>
+                  <option value="even">Even only</option>
+                  <option value="odd">Odd only</option>
+                </select>
+              </div>
+              <div class="trade-row">
+                <label for="eo-duration">Duration (ticks)</label>
+                <input id="eo-duration" type="number" min="1" max="10" step="1" value="1" class="trade-input" />
+              </div>
+              <div class="trade-row">
+                <label for="eo-ndigits">Digits in a row</label>
+                <input id="eo-ndigits" type="number" min="2" max="10" step="1" value="3" class="trade-input" />
+              </div>
+              <div class="trade-row">
+                <label for="eo-maxrec">Max recovery trades</label>
+                <input id="eo-maxrec" type="number" min="0" step="1" value="2" class="trade-input" />
+              </div>
+              <div class="trade-row">
+                <label for="eo-stake">Stake</label>
+                <input id="eo-stake" type="number" min="0.35" step="0.01" value="0.35" class="trade-input" />
+              </div>
+              <div class="trade-row">
+                <label for="eo-mult">Martingale multiplier</label>
+                <input id="eo-mult" type="number" min="1" max="3" step="0.1" value="2" class="trade-input" />
+              </div>
+              <div class="trade-row">
+                <label for="eo-tp">Take profit</label>
+                <input id="eo-tp" type="number" min="0.01" step="0.01" value="10" class="trade-input" />
+              </div>
+              <div class="trade-row">
+                <label for="eo-sl">Stop loss</label>
+                <input id="eo-sl" type="number" min="0.01" step="0.01" value="20" class="trade-input" />
+              </div>
+              <div class="trade-row">
+                <label for="eo-maxtrades">Max trades (0 = no limit)</label>
+                <input id="eo-maxtrades" type="number" min="0" step="1" value="0" class="trade-input" />
+              </div>
+              <div class="trade-row sniper-check">
+                <label for="eo-hardstop"><input id="eo-hardstop" type="checkbox" /> Never place a trade that could take the loss past the stop loss</label>
+              </div>
+              <div class="trade-row sniper-check">
+                <label for="eo-fastread"><input id="eo-fastread" type="checkbox" /> Fast loss reading (buy the recovery trade as soon as the exit tick shows a loss)</label>
+              </div>
+            </div>
+
+            <div class="sniper-actions">
+              <button id="eo-run" class="btn-buy btn-buy-green">▶ Run</button>
+              <button id="eo-stop" class="btn-buy btn-buy-red" disabled>■ Stop</button>
+            </div>
+
+            <div class="sniper-stats">
+              <span>Status: <b id="eo-status">Idle</b></span>
+              <span>Trades: <b id="eo-trades">0</b></span>
+              <span>Wins: <b id="eo-wins">0</b></span>
+              <span>Next stake: <b id="eo-next">—</b></span>
+              <span>Profit: <b id="eo-profit">0.00</b></span>
+            </div>
+
+            <div id="eo-log" class="sniper-log"></div>
+          </div>
+
           <!-- Digit distribution widget — bottom of the tab, with its own market dropdown -->
           <div class="sniper-card sniper-digits">
             <div class="sniper-digits-head">
@@ -370,5 +455,7 @@
   <script src="js/bot-runtime.js"></script>
   <script src="js/sniper-engine.js"></script>
   <script src="js/sniper-trader.js"></script>
+  <script src="js/sniper-evenodd-engine.js"></script>
+  <script src="js/sniper-evenodd.js"></script>
 </body>
 </html>
