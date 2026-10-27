@@ -248,165 +248,141 @@
           <div class="sniper-picker" role="group" aria-label="Choose a sniper bot">
             <button type="button" id="sn-pick-ou" class="sniper-pick active" data-bot="overunder" aria-pressed="true">
               <span class="sniper-pick-title">Over/Under Sniper Trader</span>
-              <span class="sniper-pick-desc">Waits for a run of high or low digits, then trades Over or Under.</span>
               <span class="sniper-pick-badge hidden">● Running</span>
             </button>
             <button type="button" id="sn-pick-eo" class="sniper-pick" data-bot="evenodd" aria-pressed="false">
               <span class="sniper-pick-title">Even/Odd Sniper Trader</span>
-              <span class="sniper-pick-desc">Trades Even after a run of odd digits, and Odd after a run of even digits.</span>
               <span class="sniper-pick-badge hidden">● Running</span>
             </button>
           </div>
 
+          <!-- ============ OVER/UNDER SNIPER TRADER ============ -->
           <div id="sn-ou-card" class="sniper-card">
-            <h3>Over/Under Sniper Trader</h3>
-            <p class="sniper-sub">Waits for a digit pattern on <b id="sn-market-line">—</b>, then trades. Change the market with the dropdown under the digit widget below.</p>
-            <div id="sn-banner" class="sniper-banner hidden"></div>
+            <div class="sniper-meta">
+              <span>Trading <b id="sn-market-line">—</b></span>
+              <span id="sn-banner" class="sniper-banner hidden"></span>
+            </div>
 
-            <div class="sniper-grid">
-              <div class="trade-row">
-                <label for="sn-contract">Contract to buy</label>
+            <div class="sniper-fieldrow">
+              <span class="sniper-rowtitle">Entry</span>
+              <label class="fld" title="The contract to buy when the pattern appears"><span>Contract</span>
                 <select id="sn-contract" class="trade-select">
                   <option value="DIGITUNDER">Digit Under</option>
                   <option value="DIGITOVER">Digit Over</option>
-                </select>
-              </div>
-              <div class="trade-row">
-                <label for="sn-prediction">Prediction digit</label>
-                <input id="sn-prediction" type="number" min="0" max="9" step="1" value="5" class="trade-input" />
-              </div>
-              <div class="trade-row">
-                <label for="sn-duration">Duration (ticks)</label>
-                <input id="sn-duration" type="number" min="1" step="1" value="1" class="trade-input" />
-              </div>
-              <div class="trade-row">
-                <label for="sn-ndigits">Digits in a row</label>
-                <input id="sn-ndigits" type="number" min="1" max="10" step="1" value="3" class="trade-input" />
-              </div>
-              <div class="trade-row">
-                <label for="sn-compare">Digits must be</label>
+                </select></label>
+              <label class="fld" title="The digit the contract is judged against"><span>Prediction</span>
+                <input id="sn-prediction" type="number" min="0" max="9" step="1" value="5" class="trade-input ch2" /></label>
+              <label class="fld" title="Contract length in ticks"><span>Ticks</span>
+                <input id="sn-duration" type="number" min="1" step="1" value="1" class="trade-input ch2" /></label>
+              <label class="fld" title="How many digits in a row make the pattern"><span>In a row</span>
+                <input id="sn-ndigits" type="number" min="1" max="10" step="1" value="3" class="trade-input ch2" /></label>
+              <label class="fld" title="The pattern digits must be at or above / at or below the pattern digit"><span>Digits are</span>
                 <select id="sn-compare" class="trade-select">
-                  <option value="GTE">At or above</option>
-                  <option value="LTE">At or below</option>
-                </select>
-              </div>
-              <div class="trade-row">
-                <label for="sn-threshold">Pattern digit</label>
-                <input id="sn-threshold" type="number" min="0" max="9" step="1" value="5" class="trade-input" />
-              </div>
-              <div class="trade-row">
-                <label for="sn-maxrec">Max recovery trades</label>
-                <input id="sn-maxrec" type="number" min="1" step="1" value="2" class="trade-input" />
-              </div>
-              <div class="trade-row">
-                <label for="sn-stake">Stake</label>
-                <input id="sn-stake" type="number" min="0.35" step="0.01" value="0.35" class="trade-input" />
-              </div>
-              <div class="trade-row">
-                <label for="sn-mult">Martingale multiplier</label>
-                <input id="sn-mult" type="number" min="1" max="3" step="0.1" value="2" class="trade-input" />
-              </div>
-              <div class="trade-row">
-                <label for="sn-tp">Take profit</label>
-                <input id="sn-tp" type="number" min="0.01" step="0.01" value="10" class="trade-input" />
-              </div>
-              <div class="trade-row">
-                <label for="sn-sl">Stop loss</label>
-                <input id="sn-sl" type="number" min="0.01" step="0.01" value="20" class="trade-input" />
-              </div>
-              <div class="trade-row sniper-check">
-                <label for="sn-hardstop"><input id="sn-hardstop" type="checkbox" /> Never place a trade that could take the loss past the stop loss</label>
-              </div>
-              <div class="trade-row sniper-check">
-                <label for="sn-fastread"><input id="sn-fastread" type="checkbox" /> Fast loss reading (buy the recovery trade as soon as the exit tick shows a loss)</label>
-              </div>
+                  <option value="GTE">≥ at or above</option>
+                  <option value="LTE">≤ at or below</option>
+                </select></label>
+              <label class="fld" title="The digit the pattern is compared with"><span>Pattern digit</span>
+                <input id="sn-threshold" type="number" min="0" max="9" step="1" value="5" class="trade-input ch2" /></label>
+            </div>
+
+            <div class="sniper-fieldrow">
+              <span class="sniper-rowtitle">Recovery &amp; limits</span>
+              <label class="fld" title="Trades placed straight after a loss, before waiting for the pattern again"><span>Recovery</span>
+                <input id="sn-maxrec" type="number" min="1" step="1" value="2" class="trade-input ch2" /></label>
+              <label class="fld"><span>Stake</span>
+                <input id="sn-stake" type="number" min="0.35" step="0.01" value="0.35" class="trade-input ch5" /></label>
+              <label class="fld" title="The stake is multiplied by this after every loss"><span>Multiplier</span>
+                <input id="sn-mult" type="number" min="1" max="3" step="0.1" value="2" class="trade-input ch3" /></label>
+              <label class="fld"><span>Take profit</span>
+                <input id="sn-tp" type="number" min="0.01" step="0.01" value="10" class="trade-input ch5" /></label>
+              <label class="fld"><span>Stop loss</span>
+                <input id="sn-sl" type="number" min="0.01" step="0.01" value="20" class="trade-input ch5" /></label>
+            </div>
+
+            <div class="sniper-options">
+              <label for="sn-hardstop"><input id="sn-hardstop" type="checkbox" /> Never place a trade that could pass the stop loss</label>
+              <label for="sn-fastread"><input id="sn-fastread" type="checkbox" /> Fast loss reading</label>
             </div>
 
             <div class="sniper-actions">
               <button id="sn-run" class="btn-buy btn-buy-green">▶ Run</button>
               <button id="sn-stop" class="btn-buy btn-buy-red" disabled>■ Stop</button>
             </div>
-
-            <div class="sniper-stats">
-              <span>Status: <b id="sn-status">Idle</b></span>
-              <span>Trades: <b id="sn-trades">0</b></span>
-              <span>Wins: <b id="sn-wins">0</b></span>
-              <span>Next stake: <b id="sn-next">—</b></span>
-              <span>Profit: <b id="sn-profit">0.00</b></span>
+            <div class="sniper-dash">
+              <span id="sn-status" class="sniper-chip">Idle</span>
+              <div class="sniper-tile">
+                <span class="sniper-tile-label">Profit / Loss</span>
+                <b id="sn-profit" class="sniper-big">0.00</b>
+                <small id="sn-last" class="sniper-last"></small>
+              </div>
+              <div class="sniper-tile">
+                <span class="sniper-tile-label">Next stake</span>
+                <b id="sn-next" class="sniper-big">—</b>
+              </div>
             </div>
-
-            <div id="sn-log" class="sniper-log"></div>
+            <div id="sn-log" class="sniper-msg hidden"></div>
           </div>
 
           <!-- ============ EVEN/ODD SNIPER TRADER ============ -->
           <div id="sn-eo-card" class="sniper-card hidden">
-            <h3>Even/Odd Sniper Trader</h3>
-            <p class="sniper-sub">Trading <b id="eo-market-line">—</b>. <span id="eo-hint"></span> Change the market with the dropdown under the digit widget below.</p>
-            <div id="eo-banner" class="sniper-banner hidden"></div>
+            <div class="sniper-meta">
+              <span>Trading <b id="eo-market-line">—</b></span>
+              <span id="eo-banner" class="sniper-banner hidden"></span>
+            </div>
+            <p id="eo-hint" class="sniper-hint"></p>
 
-            <div class="sniper-grid">
-              <div class="trade-row">
-                <label for="eo-mode">Contract type</label>
+            <div class="sniper-fieldrow">
+              <span class="sniper-rowtitle">Entry</span>
+              <label class="fld" title="Both = opposite of the run. Even only reacts to odd runs; Odd only reacts to even runs."><span>Contract</span>
                 <select id="eo-mode" class="trade-select">
                   <option value="both">Both (Even &amp; Odd)</option>
                   <option value="even">Even only</option>
                   <option value="odd">Odd only</option>
-                </select>
-              </div>
-              <div class="trade-row">
-                <label for="eo-duration">Duration (ticks)</label>
-                <input id="eo-duration" type="number" min="1" max="10" step="1" value="1" class="trade-input" />
-              </div>
-              <div class="trade-row">
-                <label for="eo-ndigits">Digits in a row</label>
-                <input id="eo-ndigits" type="number" min="2" max="10" step="1" value="3" class="trade-input" />
-              </div>
-              <div class="trade-row">
-                <label for="eo-maxrec">Max recovery trades</label>
-                <input id="eo-maxrec" type="number" min="0" step="1" value="2" class="trade-input" />
-              </div>
-              <div class="trade-row">
-                <label for="eo-stake">Stake</label>
-                <input id="eo-stake" type="number" min="0.35" step="0.01" value="0.35" class="trade-input" />
-              </div>
-              <div class="trade-row">
-                <label for="eo-mult">Martingale multiplier</label>
-                <input id="eo-mult" type="number" min="1" max="3" step="0.1" value="2" class="trade-input" />
-              </div>
-              <div class="trade-row">
-                <label for="eo-tp">Take profit</label>
-                <input id="eo-tp" type="number" min="0.01" step="0.01" value="10" class="trade-input" />
-              </div>
-              <div class="trade-row">
-                <label for="eo-sl">Stop loss</label>
-                <input id="eo-sl" type="number" min="0.01" step="0.01" value="20" class="trade-input" />
-              </div>
-              <div class="trade-row">
-                <label for="eo-maxtrades">Max trades (0 = no limit)</label>
-                <input id="eo-maxtrades" type="number" min="0" step="1" value="0" class="trade-input" />
-              </div>
-              <div class="trade-row sniper-check">
-                <label for="eo-hardstop"><input id="eo-hardstop" type="checkbox" /> Never place a trade that could take the loss past the stop loss</label>
-              </div>
-              <div class="trade-row sniper-check">
-                <label for="eo-fastread"><input id="eo-fastread" type="checkbox" /> Fast loss reading (buy the recovery trade as soon as the exit tick shows a loss)</label>
-              </div>
+                </select></label>
+              <label class="fld" title="Contract length in ticks"><span>Ticks</span>
+                <input id="eo-duration" type="number" min="1" max="10" step="1" value="1" class="trade-input ch2" /></label>
+              <label class="fld" title="How many odd (or even) digits in a row make the pattern"><span>In a row</span>
+                <input id="eo-ndigits" type="number" min="2" max="10" step="1" value="3" class="trade-input ch2" /></label>
+            </div>
+
+            <div class="sniper-fieldrow">
+              <span class="sniper-rowtitle">Recovery &amp; limits</span>
+              <label class="fld" title="Trades placed straight after a loss (0 = none)"><span>Recovery</span>
+                <input id="eo-maxrec" type="number" min="0" step="1" value="2" class="trade-input ch2" /></label>
+              <label class="fld"><span>Stake</span>
+                <input id="eo-stake" type="number" min="0.35" step="0.01" value="0.35" class="trade-input ch5" /></label>
+              <label class="fld" title="The stake is multiplied by this after every loss"><span>Multiplier</span>
+                <input id="eo-mult" type="number" min="1" max="3" step="0.1" value="2" class="trade-input ch3" /></label>
+              <label class="fld"><span>Take profit</span>
+                <input id="eo-tp" type="number" min="0.01" step="0.01" value="10" class="trade-input ch5" /></label>
+              <label class="fld"><span>Stop loss</span>
+                <input id="eo-sl" type="number" min="0.01" step="0.01" value="20" class="trade-input ch5" /></label>
+              <label class="fld" title="Stop after this many trades (0 = no limit)"><span>Max trades</span>
+                <input id="eo-maxtrades" type="number" min="0" step="1" value="0" class="trade-input ch3" /></label>
+            </div>
+
+            <div class="sniper-options">
+              <label for="eo-hardstop"><input id="eo-hardstop" type="checkbox" /> Never place a trade that could pass the stop loss</label>
+              <label for="eo-fastread"><input id="eo-fastread" type="checkbox" /> Fast loss reading</label>
             </div>
 
             <div class="sniper-actions">
               <button id="eo-run" class="btn-buy btn-buy-green">▶ Run</button>
               <button id="eo-stop" class="btn-buy btn-buy-red" disabled>■ Stop</button>
             </div>
-
-            <div class="sniper-stats">
-              <span>Status: <b id="eo-status">Idle</b></span>
-              <span>Trades: <b id="eo-trades">0</b></span>
-              <span>Wins: <b id="eo-wins">0</b></span>
-              <span>Next stake: <b id="eo-next">—</b></span>
-              <span>Profit: <b id="eo-profit">0.00</b></span>
+            <div class="sniper-dash">
+              <span id="eo-status" class="sniper-chip">Idle</span>
+              <div class="sniper-tile">
+                <span class="sniper-tile-label">Profit / Loss</span>
+                <b id="eo-profit" class="sniper-big">0.00</b>
+                <small id="eo-last" class="sniper-last"></small>
+              </div>
+              <div class="sniper-tile">
+                <span class="sniper-tile-label">Next stake</span>
+                <b id="eo-next" class="sniper-big">—</b>
+              </div>
             </div>
-
-            <div id="eo-log" class="sniper-log"></div>
+            <div id="eo-log" class="sniper-msg hidden"></div>
           </div>
 
           <!-- Digit distribution widget — bottom of the tab, with its own market dropdown -->
