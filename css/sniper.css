@@ -62,7 +62,6 @@
   gap: 0.6rem;
   margin: 0.3rem 0 1rem;
 }
-.sniper-actions .btn-buy { margin-top: 0; flex: 1; }
 .sniper-actions .btn-buy:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .sniper-stats {
@@ -221,4 +220,232 @@ body.sniper-active footer {
 @media (max-width: 480px) {
   .sniper-digits-controls { width: 100%; }
   .sniper-digits-controls .trade-select { flex: 1; min-width: 0; }
+}
+
+/* ==========================================================
+   Sniper Trader tab — compact redesign
+   ========================================================== */
+
+/* ---------- Bot picker: two brown cards ---------- */
+.sniper-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+.sniper-pick {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 68px;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  border: 1px solid #8A6446;
+  color: #F6EADB;
+  text-align: left;
+  cursor: pointer;
+  background: linear-gradient(145deg, #6A4731 0%, #3F281B 100%);
+  box-shadow: 0 3px 10px rgba(62, 39, 24, 0.22);
+  opacity: 0.88;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease, border-color 0.15s ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.sniper-pick:hover { opacity: 1; transform: translateY(-1px); }
+.sniper-pick.active {
+  opacity: 1;
+  border-color: var(--gold);
+  background: linear-gradient(145deg, #8A5F3E 0%, #4A2F20 100%);
+  box-shadow: 0 0 0 2px rgba(212, 169, 74, 0.55), 0 8px 18px rgba(62, 39, 24, 0.35);
+}
+.sniper-pick-title {
+  display: block;
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 0.01em;
+}
+.sniper-pick.active .sniper-pick-title::after {
+  content: "";
+  display: block;
+  width: 2rem;
+  height: 2px;
+  margin-top: 0.3rem;
+  border-radius: 2px;
+  background: var(--gold);
+}
+.sniper-pick-badge {
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(46, 204, 143, 0.22);
+  color: #8FEFC3;
+}
+.sniper-pick-badge.hidden { display: none; }
+
+/* ---------- Meta line + hint ---------- */
+.sniper-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: #6B7280;
+  margin-bottom: 0.5rem;
+}
+.sniper-meta b { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #1A1D22; }
+.sniper-meta .sniper-banner { margin: 0; }
+.sniper-hint { font-size: 0.78rem; color: #6B7280; margin: 0 0 0.5rem; }
+.sniper-hint b { color: #1A1D22; }
+
+/* ---------- Compact parameter rows ---------- */
+.sniper-fieldrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.4rem 0.8rem;
+  padding: 0.55rem 0;
+  border-top: 1px solid #EEF0F3;
+}
+.sniper-rowtitle {
+  flex: 0 0 100%;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9AA3AF;
+}
+.fld { display: flex; flex-direction: column; gap: 0.2rem; margin: 0; }
+.fld > span { font-size: 0.68rem; color: #6B7280; white-space: nowrap; }
+.fld .trade-input,
+.fld .trade-select {
+  width: auto;
+  padding: 0.3rem 0.45rem;
+  font-size: 0.84rem;
+  line-height: 1.2;
+  border-radius: 6px;
+}
+/* Number boxes are only as wide as the value they hold */
+.fld .trade-input {
+  --ch: 4;
+  width: calc(var(--ch) * 1ch + 1.1rem);
+  text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.fld .trade-input.ch2 { --ch: 2; }
+.fld .trade-input.ch3 { --ch: 3; }
+.fld .trade-input.ch5 { --ch: 5; }
+@supports (field-sizing: content) {
+  .fld .trade-input { field-sizing: content; width: auto; min-width: calc(2ch + 1.1rem); }
+}
+.fld .trade-input::-webkit-outer-spin-button,
+.fld .trade-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.sniper-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid #EEF0F3;
+  font-size: 0.76rem;
+  color: #6B7280;
+}
+.sniper-options label { display: flex; align-items: center; gap: 0.35rem; cursor: pointer; }
+.sniper-options input[type="checkbox"] { width: auto; margin: 0; accent-color: var(--gold); }
+
+/* ---------- Small Run / Stop buttons ---------- */
+.sniper-actions { display: flex; gap: 0.5rem; margin: 0.5rem 0 0.8rem; }
+.sniper-actions .btn-buy {
+  flex: 0 0 auto;
+  width: auto;
+  margin: 0;
+  padding: 0.4rem 1.2rem;
+  min-height: 36px;
+  font-size: 0.84rem;
+  border-radius: 8px;
+}
+
+/* ---------- Status dashboard: only Profit/Loss and Next stake ---------- */
+.sniper-dash { display: flex; align-items: stretch; flex-wrap: wrap; gap: 0.6rem; }
+.sniper-chip {
+  align-self: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  background: #F1F3F5;
+  color: #6B7280;
+}
+.sniper-chip.running { background: rgba(46, 204, 143, 0.15); color: var(--rise); }
+.sniper-tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.05rem;
+  min-width: 7.5rem;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid #E4E7EB;
+  border-radius: 10px;
+  background: #F9FAFB;
+}
+.sniper-tile-label {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9AA3AF;
+}
+.sniper-big {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #1A1D22;
+}
+.sniper-big.sniper-pos, .sniper-last.sniper-pos { color: var(--rise); }   /* profits in green */
+.sniper-big.sniper-neg, .sniper-last.sniper-neg { color: var(--fall); }   /* losses in red */
+.sniper-last {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  color: #9AA3AF;
+  min-height: 0.9rem;
+}
+
+/* One-line notice for things that matter (errors, limits reached) */
+.sniper-msg {
+  margin-top: 0.6rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  background: #F3F4F6;
+  color: #4B5563;
+}
+.sniper-msg.bad { background: rgba(255, 92, 92, 0.10); color: var(--fall); }
+.sniper-msg.good { background: rgba(46, 204, 143, 0.12); color: var(--rise); }
+.sniper-msg.hidden { display: none; }
+
+@media (max-width: 480px) {
+  .sniper-picker { gap: 0.45rem; }
+  .sniper-pick { min-height: 56px; padding: 0.55rem 0.65rem; border-radius: 12px; }
+  .sniper-pick-title { font-size: 0.8rem; }
+  .sniper-tile { flex: 1 1 0; min-width: 0; }
+  .sniper-big { font-size: 1.15rem; }
+}
+
+/* Centre the Run / Stop labels inside the small buttons */
+.sniper-actions .btn-buy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  line-height: 1;
+}
+
+@media (max-width: 480px) {
+  .sniper-tile-label { white-space: nowrap; font-size: 0.58rem; letter-spacing: 0.04em; }
 }
