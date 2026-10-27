@@ -29,7 +29,7 @@
     nDigits: $("sn-ndigits"), compare: $("sn-compare"), threshold: $("sn-threshold"),
     maxRec: $("sn-maxrec"), stake: $("sn-stake"), mult: $("sn-mult"), tp: $("sn-tp"), sl: $("sn-sl"), hardStop: $("sn-hardstop"), fastRead: $("sn-fastread"),
     run: $("sn-run"), stop: $("sn-stop"),
-    status: $("sn-status"), trades: $("sn-trades"), wins: $("sn-wins"), next: $("sn-next"), profit: $("sn-profit"),
+    status: $("sn-status"), last: $("sn-last"), next: $("sn-next"), profit: $("sn-profit"),
     log: $("sn-log"),
     digitsRow: $("sn-digits-row"), digitsLabel: $("sn-digits-label"), digitsNote: $("sn-digits-note"),
     marketSelect: $("sn-market-select"), windowSelect: $("sn-window"),
@@ -37,6 +37,7 @@
 
   let session = null;           // running engine, if any
   let activeWinSet = null;      // digits that currently count as a win (while the bot's contract is open)
+  let clearAfterTick = false;   // the contract has ended: keep its colours through the exit tick, clear on the NEXT tick
 
   // ---------- helpers ----------
   const RISE_GREEN = "#2ECC8F";
@@ -63,12 +64,42 @@
   function tabIsVisible() {
     return !tabEl.classList.contains("hidden");
   }
+  // On-screen notice: only the latest IMPORTANT message is shown (errors, limits reached, warnings).
+  // The detailed trade log (timings, every trade) stays in the browser console (F12) for troubleshooting.
+  const QUIET = /^(timing:|speed:|debug |Pattern:|Started:|Stop requested|Fast loss reading ON|WON |LOST |Bot stopped)/;
   function log(text) {
-    const line = document.createElement("div");
-    line.className = "sniper-log-line";
-    line.textContent = "[" + new Date().toLocaleTimeString() + "] " + text;
-    el.log.appendChild(line);
-    el.log.scrollTop = el.log.scrollHeight;
+    console.debug("[Over/Under bot] " + text);
+    if (QUIET.test(text)) return;
+    const bad = /^Error|stop loss|WARNING|Check settings|could take the loss|Not connected|Choose a synthetic|Account changed|is running/i.test(text);
+    const good = /Take profit/i.test(text);
+    el.log.textContent = text;
+    el.log.className = "sniper-msg" + (bad ? " bad" : good ? " good" : "");
+  }
+  function clearMsg() { el.log.textContent = ""; el.log.className = "sniper-msg hidden"; }
+
+  const signed = (x) => (x > 0 ? "+" : "") + x.toFixed(2);
+  const tone = (node, v) => { node.classList.toggle("sniper-pos", v > 0); node.classList.toggle("sniper-neg", v < 0); };
+  let prevProfit = 0, prevTrades = 0;
+  function paintStats(s) {
+    el.profit.textContent = signed(s.profit);
+    tone(el.profit, s.profit);
+    if (s.trades > prevTrades) {                          // a trade just finished: show its result
+      const d = Math.round((s.profit - prevProfit) * 100) / 100;
+      el.last.textContent = "last trade " + signed(d);
+      tone(el.last, d);
+    }
+    prevProfit = s.profit; prevTrades = s.trades;
+    el.next.textContent = s.stake.toFixed(2);
+  }
+  function resetDash(stake) {
+    prevProfit = 0; prevTrades = 0;
+    el.profit.textContent = "0.00"; tone(el.profit, 0);
+    el.last.textContent = ""; tone(el.last, 0);
+    el.next.textContent = stake.toFixed(2);
+  }
+  function setStatus(text) {
+    el.status.textContent = text;
+    el.status.classList.toggle("running", !/^(Idle|Stopped)/.test(text));
   }
 
   // ==========================================================
@@ -172,6 +203,9 @@
   // Live ticks: shared broadcast from markets.js (no new subscription).
   document.addEventListener("algotrade:tick", (e) => {
     if (e.detail.symbol !== historySymbol) return;
+    // Same behaviour as the Manual Trader widget: the exit tick is drawn with its win/lose colours,
+    // and only the tick AFTER it draws the normal percentages again.
+    if (clearAfterTick) { activeWinSet = null; clearAfterTick = false; }
     const meta = symbolMeta(historySymbol);
     const places = decimalPlacesFor(meta ? meta.pipSize : 0.01);
     history.push(Number(Number(e.detail.quote).toFixed(places).slice(-1)));
@@ -297,11 +331,29 @@
     },
   };
 
+  // The Even/Odd bot (sniper-evenodd.js) shares this tab. Only one sniper bot may run at a time.
+  let otherRunning = false;
+  document.addEventListener("algotrade:sniper-run-state", (e) => {
+    if (e.detail.bot === "overunder") return;
+    otherRunning = !!e.detail.running;
+    setRunningUI(!!session);
+  });
+  // The Even/Odd bot colours the digit widget through this event while its contract is open.
+  document.addEventListener("algotrade:sniper-contract", (e) => {
+    if (e.detail.open) { activeWinSet = new Set(e.detail.winDigits); clearAfterTick = false; renderDigits(); }
+    else clearAfterTick = true;
+  });
+  function announceRunState(on) {
+    document.dispatchEvent(new CustomEvent("algotrade:sniper-run-state", { detail: { bot: "overunder", running: on } }));
+  }
+
   function setRunningUI(on) {
-    el.run.disabled = on;
+    el.run.disabled = on || otherRunning;
+    el.run.title = otherRunning && !on ? "The Even/Odd bot is running. Stop it first." : "";
     el.stop.disabled = !on;
-    el.marketSelect.disabled = on;
-    el.marketSelect.title = on ? "Stop the bot to change market" : "";
+    const lock = on || otherRunning;
+    el.marketSelect.disabled = lock;
+    el.marketSelect.title = lock ? "Stop the running bot to change market" : "";
     [el.contract, el.prediction, el.duration, el.nDigits, el.compare, el.threshold,
      el.maxRec, el.stake, el.mult, el.tp, el.sl, el.hardStop, el.fastRead].forEach((x) => { x.disabled = on; });
   }
@@ -316,6 +368,7 @@
 
   el.run.addEventListener("click", () => {
     if (session) return;
+    if (otherRunning) { log("The Even/Odd bot is running. Stop it first."); return; }
     if (!derivAPI.ws || derivAPI.ws.readyState !== WebSocket.OPEN) { log("Not connected to Deriv yet."); return; }
     const cfg = readConfig();
     if (!cfg) return;
@@ -325,23 +378,18 @@
       if (!confirm("This bot will run on your REAL account and place real trades. Continue?")) return;
     }
 
-    el.log.innerHTML = "";
+    clearMsg();
+    resetDash(cfg.stake);
     setRunningUI(true);
     session = startSniperEngine(deps, cfg, {
       log: log,
-      status: (s) => { el.status.textContent = s; },
-      stats: (s) => {
-        el.trades.textContent = s.trades;
-        el.wins.textContent = s.wins;
-        el.profit.textContent = s.profit.toFixed(2);
-        el.profit.classList.toggle("sniper-pos", s.profit > 0);
-        el.profit.classList.toggle("sniper-neg", s.profit < 0);
-        el.next.textContent = s.stake.toFixed(2);
-      },
-      bought: () => { activeWinSet = winSetFor(cfg.contract, cfg.prediction); renderDigits(); },
-      settled: () => { activeWinSet = null; renderDigits(); },
-      finished: () => { activeWinSet = null; session = null; setRunningUI(false); renderDigits(); },
+      status: setStatus,
+      stats: paintStats,
+      bought: () => { activeWinSet = winSetFor(cfg.contract, cfg.prediction); clearAfterTick = false; renderDigits(); },
+      settled: () => { clearAfterTick = true; },
+      finished: () => { clearAfterTick = true; session = null; announceRunState(false); setRunningUI(false); },
     });
+    announceRunState(true);
   });
 
   el.stop.addEventListener("click", () => { if (session) session.stop(); });
