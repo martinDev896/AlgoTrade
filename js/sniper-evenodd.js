@@ -25,7 +25,7 @@
     stake: $("eo-stake"), mult: $("eo-mult"), tp: $("eo-tp"), sl: $("eo-sl"), maxTrades: $("eo-maxtrades"),
     hardStop: $("eo-hardstop"), fastRead: $("eo-fastread"),
     run: $("eo-run"), stop: $("eo-stop"),
-    status: $("eo-status"), trades: $("eo-trades"), wins: $("eo-wins"), next: $("eo-next"), profit: $("eo-profit"),
+    status: $("eo-status"), last: $("eo-last"), next: $("eo-next"), profit: $("eo-profit"),
     log: $("eo-log"),
   };
 
@@ -43,12 +43,42 @@
   const isSynthetic = (meta) => !!meta && meta.marketCode === "synthetic_index";
   function activeAccount() { return AppState.accounts.find((a) => a.account_id === AppState.activeAccountId) || null; }
   function activeCurrency() { const a = activeAccount(); return a ? a.currency : "USD"; }
+  // On-screen notice: only the latest IMPORTANT message is shown (errors, limits reached, warnings).
+  // The detailed trade log (timings, every trade) stays in the browser console (F12) for troubleshooting.
+  const QUIET = /^(timing:|speed:|debug |Pattern:|Started:|Stop requested|Fast loss reading ON|WON |LOST |Bot stopped)/;
   function log(text) {
-    const line = document.createElement("div");
-    line.className = "sniper-log-line";
-    line.textContent = "[" + new Date().toLocaleTimeString() + "] " + text;
-    el.log.appendChild(line);
-    el.log.scrollTop = el.log.scrollHeight;
+    console.debug("[Even/Odd bot] " + text);
+    if (QUIET.test(text)) return;
+    const bad = /^Error|stop loss|WARNING|Check settings|could take the loss|Not connected|Choose a synthetic|Account changed|is running/i.test(text);
+    const good = /Take profit/i.test(text);
+    el.log.textContent = text;
+    el.log.className = "sniper-msg" + (bad ? " bad" : good ? " good" : "");
+  }
+  function clearMsg() { el.log.textContent = ""; el.log.className = "sniper-msg hidden"; }
+
+  const signed = (x) => (x > 0 ? "+" : "") + x.toFixed(2);
+  const tone = (node, v) => { node.classList.toggle("sniper-pos", v > 0); node.classList.toggle("sniper-neg", v < 0); };
+  let prevProfit = 0, prevTrades = 0;
+  function paintStats(s) {
+    el.profit.textContent = signed(s.profit);
+    tone(el.profit, s.profit);
+    if (s.trades > prevTrades) {                          // a trade just finished: show its result
+      const d = Math.round((s.profit - prevProfit) * 100) / 100;
+      el.last.textContent = "last trade " + signed(d);
+      tone(el.last, d);
+    }
+    prevProfit = s.profit; prevTrades = s.trades;
+    el.next.textContent = s.stake.toFixed(2);
+  }
+  function resetDash(stake) {
+    prevProfit = 0; prevTrades = 0;
+    el.profit.textContent = "0.00"; tone(el.profit, 0);
+    el.last.textContent = ""; tone(el.last, 0);
+    el.next.textContent = stake.toFixed(2);
+  }
+  function setStatus(text) {
+    el.status.textContent = text;
+    el.status.classList.toggle("running", !/^(Idle|Stopped)/.test(text));
   }
   const announce = (bot, on) => document.dispatchEvent(new CustomEvent("algotrade:sniper-run-state", { detail: { bot: bot, running: on } }));
 
@@ -167,19 +197,13 @@
       if (!confirm("This bot will run on your REAL account and place real trades. Continue?")) return;
     }
 
-    el.log.innerHTML = "";
+    clearMsg();
+    resetDash(cfg.stake);
     setRunningUI(true);
     session = startEvenOddEngine(deps, cfg, {
       log: log,
-      status: (s) => { el.status.textContent = s; },
-      stats: (s) => {
-        el.trades.textContent = s.trades;
-        el.wins.textContent = s.wins;
-        el.profit.textContent = s.profit.toFixed(2);
-        el.profit.classList.toggle("sniper-pos", s.profit > 0);
-        el.profit.classList.toggle("sniper-neg", s.profit < 0);
-        el.next.textContent = s.stake.toFixed(2);
-      },
+      status: setStatus,
+      stats: paintStats,
       bought: (b) => widget({ open: true, winDigits: WIN_DIGITS[b.contract] || [] }),
       settled: () => widget({ open: false }),
       finished: () => { widget({ open: false }); session = null; announce("evenodd", false); setRunningUI(false); },
