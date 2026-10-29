@@ -38,7 +38,9 @@
 function startEvenOddEngine(deps, cfg, hooks) {
   hooks = hooks || {};
   const log = hooks.log || function () {};
-  const status = hooks.status || function () {};
+  // `status` remembers the last status so it can be restored after a reconnect, and stays quiet while reconnecting.
+  let lastStatus = "", reconnectNoticeOn = false;
+  const status = function (s) { lastStatus = s; if (!reconnectNoticeOn && hooks.status) hooks.status(s); };
   const stats = hooks.stats || function () {};
   const round2 = (x) => Math.round(x * 100) / 100;
   const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
@@ -49,7 +51,7 @@ function startEvenOddEngine(deps, cfg, hooks) {
   // The first win clears it, and only then can recovery mode start again.
   const st = { stake: cfg.stake, contract: null, recovery: false, recCount: 0, recoveryLocked: false, profit: 0, trades: 0, wins: 0, window: [] };
   let running = true, busy = false, ended = false;
-  let offTick = null;
+  let offTick = null, offReconnect = null, watchdog = null, lastSpecs = null;
   let earlyDisabled = false;
   // Tick timing (used for the speed readout and for the optional fast loss reading)
   let lastTickAt = null, tickInterval = null;   // tickInterval: running average gap between ticks (ms)
@@ -83,7 +85,7 @@ function startEvenOddEngine(deps, cfg, hooks) {
   const quotes = new Map();
   const qKey = (contract, stake) => contract + "|" + stake;
   function openQuote(contract, stake) {
-    const q = { contract: contract, stake: stake, latest: null, updatedAt: null, error: null, unsub: null };
+    const q = { contract: contract, stake: stake, latest: null, updatedAt: null, error: null, unsub: null, socket: socketId() };
     try {
       q.unsub = deps.subscribe(proposalReq(contract, stake), function (data) {
         if (data.error) { q.latest = null; q.error = data.error.message || "quote error"; return; }
@@ -101,6 +103,7 @@ function startEvenOddEngine(deps, cfg, hooks) {
   }
   // Keep exactly these quotes open (closes the others, opens any that are missing).
   function setQuotes(specs) {
+    lastSpecs = specs;
     const want = new Set(specs.map((x) => qKey(x.contract, x.stake)));
     quotes.forEach(function (q, k) { if (!want.has(k)) { closeQuote(q); quotes.delete(k); } });
     specs.forEach(function (x) {
@@ -119,10 +122,112 @@ function startEvenOddEngine(deps, cfg, hooks) {
   const NOT_READY = /wait|clos|settl|still|already|open|pending/i;
   const pause = (t) => new Promise((res) => setTimeout(res, t));
 
+  // ---------- Connection resilience ----------
+  // The app's socket can drop and rebuild itself (api.js / auth.js). While that happens the bot PAUSES
+  // and carries on by itself instead of stopping:
+  //  - requests wait for the connection to be back (up to 3 minutes),
+  //  - a request that never left the browser (socket still "CONNECTING") is simply sent again,
+  //  - a lost price request is simply asked again,
+  //  - a BUY whose reply was lost is checked against Deriv's own records first, so it is never bought twice,
+  //  - contract watching and price quotes are re-opened on the new connection.
+  const RECONNECT_WAIT_MS = cfg.reconnectWaitMs || 180000;
+  const isOpen = () => (deps.isOpen ? deps.isOpen() : true);
+  const socketId = () => (deps.socketId ? deps.socketId() : null);
+  const NOT_SENT = /Still in CONNECTING|CLOSING|CLOSED|not open|not connected/i;
+  const trackedContracts = new Set();
+  function stopAbortError() { const e = new Error("Stopped"); e.stopAbort = true; return e; }
+
+  // Shown whenever the connection is down while the bot runs (a watchdog also calls these, so the
+  // screen says "Reconnecting…" even when the bot is only waiting for a contract result).
+  function markDown() {
+    if (reconnectNoticeOn) return;
+    reconnectNoticeOn = true;
+    if (hooks.status) hooks.status("Reconnecting…");
+    log("Connection lost - waiting to reconnect. The bot resumes by itself.");
+  }
+  function markUp() {
+    if (!reconnectNoticeOn) return;
+    reconnectNoticeOn = false;
+    if (hooks.status && lastStatus) hooks.status(lastStatus);
+    log("Reconnected - bot resumed.");
+  }
+
+  async function waitForConnection() {
+    if (isOpen()) return;
+    const t0 = now();
+    markDown();
+    while (!isOpen()) {
+      if (ended) throw stopAbortError();
+      if (now() - t0 > RECONNECT_WAIT_MS) throw new Error("Connection was not restored in time. Check your open positions on Deriv");
+      await pause(250);
+    }
+    await pause(400);   // let the new connection settle
+    markUp();
+  }
+
+  // ctx is given for BUY requests only: { contract, stake }.
+  async function sendSafe(req, ctx) {
+    const sentEpoch = Math.floor(Date.now() / 1000);
+    let lastErr = null;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await waitForConnection();
+      if (ctx && !running) throw stopAbortError();                  // Stop was pressed before the buy left
+      try {
+        return await deps.send(req);
+      } catch (e) {
+        lastErr = e;
+        const msg = (e && e.message) || "";
+        if ((e && e.notSent) || NOT_SENT.test(msg)) continue;       // it never left the browser: send it again
+        if (e && (e.connectionLost || e.timeout)) {
+          if (!ctx) continue;                                       // a lost price request is harmless
+          const found = await findPurchasedContract(ctx, sentEpoch);   // did the buy go through?
+          if (found) {
+            log("Connection dropped while buying - the trade had gone through, carrying on with it.");
+            return { buy: { contract_id: found } };
+          }
+          continue;                                                 // confirmed NOT bought: try again
+        }
+        throw e;
+      }
+    }
+    throw lastErr || new Error("Connection kept dropping");
+  }
+
+  // After a lost buy reply: look in Deriv's open positions and recent closed trades for it.
+  // Only when BOTH lists could be read and neither has it do we treat the buy as "not placed".
+  async function findPurchasedContract(ctx, sentEpoch) {
+    await waitForConnection();
+    await pause(1500);                       // give Deriv a moment to finish anything it was processing
+    const untracked = (id) => !trackedContracts.has(String(id));
+    const recent = (t) => Number(t) >= sentEpoch - 30;
+    const sameStake = (p) => Math.abs(Number(p) - ctx.stake) < 0.005;
+    let checked = 0;
+    try {
+      const pf = await sendSafe({ portfolio: 1 });
+      const list = pf.portfolio && pf.portfolio.contracts;
+      if (Array.isArray(list)) {
+        checked++;
+        const hit = list.find((c) => c.contract_type === ctx.contract && sameStake(c.buy_price) && recent(c.purchase_time) && untracked(c.contract_id));
+        if (hit) return hit.contract_id;
+      }
+    } catch (_) { /* counted as not checked */ }
+    try {
+      const pt = await sendSafe({ profit_table: 1, description: 1, limit: 15, sort: "DESC" });
+      const list = pt.profit_table && pt.profit_table.transactions;
+      if (Array.isArray(list)) {
+        checked++;
+        const hit = list.find((t) => String(t.shortcode || "").indexOf(ctx.contract) === 0 && sameStake(t.buy_price) && recent(t.purchase_time) && untracked(t.contract_id));
+        if (hit) return hit.contract_id;
+      }
+    } catch (_) { /* counted as not checked */ }
+    if (checked < 2) throw new Error("Connection dropped while placing a trade and Deriv's records could not be checked. Check your open positions");
+    return null;
+  }
+
   async function buyContract(contract, stake) {
     const parts = [];
     const q = quotes.get(qKey(contract, stake));
-    let cached = q ? q.latest : null;
+    let cached = q && q.socket === socketId() ? q.latest : null;
     if (!cached) {
       parts.push(q ? (q.error ? "quote error: " + q.error : "no quote had arrived yet") : "no quote prepared for this stake");
     }
@@ -133,18 +238,19 @@ function startEvenOddEngine(deps, cfg, hooks) {
           parts.push("cached quote, " + ms(q.updatedAt, now()) + " old");
         } else {
           const tp = now();
-          const res = await deps.send(proposalReq(contract, stake));
+          const res = await sendSafe(proposalReq(contract, stake));
           parts.push("fresh quote " + ms(tp, now()));
           if (!res.proposal) throw new Error((res.error && res.error.message) || "No price available for this trade.");
           proposal = res.proposal;
         }
         const tb = now();
-        const r = await deps.send({ buy: proposal.id, price: proposal.ask_price });
+        const r = await sendSafe({ buy: proposal.id, price: proposal.ask_price }, { contract: contract, stake: stake });
         parts.push("buy " + ms(tb, now()));
         lastTrace = parts.join(" -> ");
         if (!r.buy || !r.buy.contract_id) throw new Error("Trade did not go through.");
         return r;
       } catch (e) {
+        if (e && e.stopAbort) { lastTrace = parts.join(" -> "); throw e; }
         const msg = (e && e.message) || "";
         parts.push("buy REJECTED (" + msg + ")");
         // A rejected buy created no contract, so one retry is safe.
@@ -211,8 +317,13 @@ function startEvenOddEngine(deps, cfg, hooks) {
       if (unsub) { try { unsub(); } catch (_) {} }
       if (offRe) offRe();
     };
+    let subSocket = null;
     const open = function () {
-      if (unsub) { try { unsub(); } catch (_) {} }
+      if (finished) return;
+      const sid = socketId();
+      if (unsub && sid !== null && subSocket === sid) return;     // already watching on this connection
+      if (unsub) { try { unsub(); } catch (_) {} unsub = null; }
+      try {
       unsub = deps.subscribe({ proposal_open_contract: 1, contract_id: contractId }, function (data) {
         if (finished) return;
         if (data.error) { cleanup(); return rejectFinal(new Error(data.error.message || "Could not watch the contract.")); }
@@ -232,6 +343,14 @@ function startEvenOddEngine(deps, cfg, hooks) {
           cleanup(); resolveFinal(poc);
         }
       });
+      subSocket = sid;
+      } catch (e) {
+        // The socket is not ready right now (e.g. still CONNECTING): try again as soon as it is back.
+        unsub = null; subSocket = null;
+        waitForConnection().then(
+          function () { if (!finished) open(); },
+          function (err) { if (!finished) { cleanup(); rejectFinal(err); } });
+      }
     };
     open();
     offRe = deps.onReconnect ? deps.onReconnect(open) : null;
@@ -249,6 +368,9 @@ function startEvenOddEngine(deps, cfg, hooks) {
     ended = true;
     running = false;
     if (offTick) offTick();
+    if (offReconnect) offReconnect();
+    if (watchdog) clearInterval(watchdog);
+    reconnectNoticeOn = false;
     closeAllQuotes();
     status("Stopped");
     log("Bot stopped.");
@@ -369,6 +491,7 @@ function startEvenOddEngine(deps, cfg, hooks) {
         const bought = await (nextBuy ? nextBuy.promise : buyContract(contractNow, stakeNow));
         nextBuy = null;
         const confirmedAt = now();
+        trackedContracts.add(String(bought.buy.contract_id));
         log(lossSeenAt !== null
           ? "timing: loss seen -> next buy confirmed in " + ms(lossSeenAt, confirmedAt) + " [" + lastTrace + "]"
           : (tickAt !== null ? "timing: pattern tick -> buy confirmed in " + ms(tickAt, confirmedAt) + " [" + lastTrace + "]" : ""));
@@ -433,12 +556,26 @@ function startEvenOddEngine(deps, cfg, hooks) {
         // Recovery loop: the next buy is already on its way — track it, no waiting for a tick.
       } while (nextBuy || (running && st.recovery));
     } catch (e) {
-      log("Error: " + ((e && e.message) || "unknown") + " - bot stopped.");
+      if (!(e && e.stopAbort)) log("Error: " + ((e && e.message) || "unknown") + " - bot stopped.");
       running = false;
     }
     busy = false;
     if (running) status("Waiting for pattern"); else end();
   }
+
+  // After a reconnect: ticks were missed (a pattern must be built from fresh digits), the learned
+  // exit-tick position can't be trusted, and the old price quotes belonged to the old connection.
+  offReconnect = deps.onReconnect ? deps.onReconnect(function () {
+    st.window.length = 0;
+    fast.enabled = false; fast.streak = 0;
+    quotes.clear();
+    if (lastSpecs) setQuotes(lastSpecs);
+  }) : null;
+
+  watchdog = deps.isOpen ? setInterval(function () {
+    if (ended) return;
+    if (!isOpen()) markDown(); else if (reconnectNoticeOn) markUp();
+  }, 500) : null;
 
   offTick = deps.onTick(function (t) {
     if (ended || t.symbol !== cfg.symbol) return;
