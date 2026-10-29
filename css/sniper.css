@@ -449,3 +449,7 @@ body.sniper-active footer {
 @media (max-width: 480px) {
   .sniper-tile-label { white-space: nowrap; font-size: 0.58rem; letter-spacing: 0.04em; }
 }
+
+/* Reconnecting: amber, so it reads as "paused", not "failed" */
+.sniper-chip.warn { background: rgba(212, 169, 74, 0.18); color: #8A6A14; }
+.sniper-msg.warn { background: rgba(212, 169, 74, 0.15); color: #8A6A14; }
