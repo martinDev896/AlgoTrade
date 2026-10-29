@@ -33,7 +33,9 @@
 function startSniperEngine(deps, cfg, hooks) {
   hooks = hooks || {};
   const log = hooks.log || function () {};
-  const status = hooks.status || function () {};
+  // `status` remembers the last status so it can be restored after a reconnect, and stays quiet while reconnecting.
+  let lastStatus = "", reconnectNoticeOn = false;
+  const status = function (s) { lastStatus = s; if (!reconnectNoticeOn && hooks.status) hooks.status(s); };
   const stats = hooks.stats || function () {};
   const round2 = (x) => Math.round(x * 100) / 100;
   const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
@@ -44,7 +46,7 @@ function startSniperEngine(deps, cfg, hooks) {
   // The first win clears it, and only then can recovery mode start again.
   const st = { stake: cfg.stake, recovery: false, recCount: 0, recoveryLocked: false, profit: 0, trades: 0, wins: 0, window: [] };
   let running = true, busy = false, ended = false;
-  let quote = null, offTick = null;
+  let quote = null, offTick = null, offReconnect = null, watchdog = null, lastQuoteStake = null;
   let earlyDisabled = false;
   // Tick timing (used for the speed readout and for the optional fast loss reading)
   let lastTickAt = null, tickInterval = null;   // tickInterval: running average gap between ticks (ms)
@@ -71,7 +73,7 @@ function startSniperEngine(deps, cfg, hooks) {
   // A live quote kept ready for the NEXT stake, so a buy can go out the
   // instant it's needed (the same cached-proposal approach Manual Trader uses).
   function openQuote(stake) {
-    const q = { stake: stake, latest: null, updatedAt: null, error: null, unsub: null };
+    const q = { stake: stake, latest: null, updatedAt: null, error: null, unsub: null, socket: socketId() };
     try {
       q.unsub = deps.subscribe(proposalReq(stake), function (data) {
         if (data.error) { q.latest = null; q.error = data.error.message || "quote error"; return; }
@@ -84,6 +86,7 @@ function startSniperEngine(deps, cfg, hooks) {
     if (q && q.unsub) { try { q.unsub(); } catch (_) {} }
   }
   function ensureQuote(stake) {
+    lastQuoteStake = stake;
     if (quote && quote.stake === stake) return;
     closeQuote(quote);
     quote = openQuote(stake);
@@ -98,9 +101,111 @@ function startSniperEngine(deps, cfg, hooks) {
   const NOT_READY = /wait|clos|settl|still|already|open|pending/i;
   const pause = (t) => new Promise((res) => setTimeout(res, t));
 
+  // ---------- Connection resilience ----------
+  // The app's socket can drop and rebuild itself (api.js / auth.js). While that happens the bot PAUSES
+  // and carries on by itself instead of stopping:
+  //  - requests wait for the connection to be back (up to 3 minutes),
+  //  - a request that never left the browser (socket still "CONNECTING") is simply sent again,
+  //  - a lost price request is simply asked again,
+  //  - a BUY whose reply was lost is checked against Deriv's own records first, so it is never bought twice,
+  //  - contract watching and price quotes are re-opened on the new connection.
+  const RECONNECT_WAIT_MS = cfg.reconnectWaitMs || 180000;
+  const isOpen = () => (deps.isOpen ? deps.isOpen() : true);
+  const socketId = () => (deps.socketId ? deps.socketId() : null);
+  const NOT_SENT = /Still in CONNECTING|CLOSING|CLOSED|not open|not connected/i;
+  const trackedContracts = new Set();
+  function stopAbortError() { const e = new Error("Stopped"); e.stopAbort = true; return e; }
+
+  // Shown whenever the connection is down while the bot runs (a watchdog also calls these, so the
+  // screen says "Reconnecting…" even when the bot is only waiting for a contract result).
+  function markDown() {
+    if (reconnectNoticeOn) return;
+    reconnectNoticeOn = true;
+    if (hooks.status) hooks.status("Reconnecting…");
+    log("Connection lost - waiting to reconnect. The bot resumes by itself.");
+  }
+  function markUp() {
+    if (!reconnectNoticeOn) return;
+    reconnectNoticeOn = false;
+    if (hooks.status && lastStatus) hooks.status(lastStatus);
+    log("Reconnected - bot resumed.");
+  }
+
+  async function waitForConnection() {
+    if (isOpen()) return;
+    const t0 = now();
+    markDown();
+    while (!isOpen()) {
+      if (ended) throw stopAbortError();
+      if (now() - t0 > RECONNECT_WAIT_MS) throw new Error("Connection was not restored in time. Check your open positions on Deriv");
+      await pause(250);
+    }
+    await pause(400);   // let the new connection settle
+    markUp();
+  }
+
+  // ctx is given for BUY requests only: { contract, stake }.
+  async function sendSafe(req, ctx) {
+    const sentEpoch = Math.floor(Date.now() / 1000);
+    let lastErr = null;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await waitForConnection();
+      if (ctx && !running) throw stopAbortError();                  // Stop was pressed before the buy left
+      try {
+        return await deps.send(req);
+      } catch (e) {
+        lastErr = e;
+        const msg = (e && e.message) || "";
+        if ((e && e.notSent) || NOT_SENT.test(msg)) continue;       // it never left the browser: send it again
+        if (e && (e.connectionLost || e.timeout)) {
+          if (!ctx) continue;                                       // a lost price request is harmless
+          const found = await findPurchasedContract(ctx, sentEpoch);   // did the buy go through?
+          if (found) {
+            log("Connection dropped while buying - the trade had gone through, carrying on with it.");
+            return { buy: { contract_id: found } };
+          }
+          continue;                                                 // confirmed NOT bought: try again
+        }
+        throw e;
+      }
+    }
+    throw lastErr || new Error("Connection kept dropping");
+  }
+
+  // After a lost buy reply: look in Deriv's open positions and recent closed trades for it.
+  // Only when BOTH lists could be read and neither has it do we treat the buy as "not placed".
+  async function findPurchasedContract(ctx, sentEpoch) {
+    await waitForConnection();
+    await pause(1500);                       // give Deriv a moment to finish anything it was processing
+    const untracked = (id) => !trackedContracts.has(String(id));
+    const recent = (t) => Number(t) >= sentEpoch - 30;
+    const sameStake = (p) => Math.abs(Number(p) - ctx.stake) < 0.005;
+    let checked = 0;
+    try {
+      const pf = await sendSafe({ portfolio: 1 });
+      const list = pf.portfolio && pf.portfolio.contracts;
+      if (Array.isArray(list)) {
+        checked++;
+        const hit = list.find((c) => c.contract_type === ctx.contract && sameStake(c.buy_price) && recent(c.purchase_time) && untracked(c.contract_id));
+        if (hit) return hit.contract_id;
+      }
+    } catch (_) { /* counted as not checked */ }
+    try {
+      const pt = await sendSafe({ profit_table: 1, description: 1, limit: 15, sort: "DESC" });
+      const list = pt.profit_table && pt.profit_table.transactions;
+      if (Array.isArray(list)) {
+        checked++;
+        const hit = list.find((t) => String(t.shortcode || "").indexOf(ctx.contract) === 0 && sameStake(t.buy_price) && recent(t.purchase_time) && untracked(t.contract_id));
+        if (hit) return hit.contract_id;
+      }
+    } catch (_) { /* counted as not checked */ }
+    if (checked < 2) throw new Error("Connection dropped while placing a trade and Deriv's records could not be checked. Check your open positions");
+    return null;
+  }
+
   async function buyContract(stake) {
     const parts = [];
-    let cached = quote && quote.stake === stake ? quote.latest : null;
+    let cached = quote && quote.stake === stake && quote.socket === socketId() ? quote.latest : null;
     if (!cached) {
       parts.push(quote && quote.stake === stake
         ? (quote.error ? "quote error: " + quote.error : "no quote had arrived yet")
@@ -113,18 +218,19 @@ function startSniperEngine(deps, cfg, hooks) {
           parts.push("cached quote, " + ms(quote.updatedAt, now()) + " old");
         } else {
           const tp = now();
-          const res = await deps.send(proposalReq(stake));
+          const res = await sendSafe(proposalReq(stake));
           parts.push("fresh quote " + ms(tp, now()));
           if (!res.proposal) throw new Error((res.error && res.error.message) || "No price available for this trade.");
           proposal = res.proposal;
         }
         const tb = now();
-        const r = await deps.send({ buy: proposal.id, price: proposal.ask_price });
+        const r = await sendSafe({ buy: proposal.id, price: proposal.ask_price }, { contract: cfg.contract, stake: stake });
         parts.push("buy " + ms(tb, now()));
         lastTrace = parts.join(" -> ");
         if (!r.buy || !r.buy.contract_id) throw new Error("Trade did not go through.");
         return r;
       } catch (e) {
+        if (e && e.stopAbort) { lastTrace = parts.join(" -> "); throw e; }
         const msg = (e && e.message) || "";
         parts.push("buy REJECTED (" + msg + ")");
         // A rejected buy created no contract, so one retry is safe.
@@ -165,6 +271,9 @@ function startSniperEngine(deps, cfg, hooks) {
   let debugContracts = 0;
   function debugUpdate(poc, openedAt, label) {
     const f = function (k) { return poc[k] === undefined ? "-" : String(poc[k]); };
+    log("debug " + label + " +" + ms(openedAt, now()) + ": status=" + f("status") + " expired=" + f("is_expired") + " sold=" + f("is_sold") +
+        " exit_tick=" + f("exit_tick") + " exit_display=" + f("exit_tick_display_value") + " sell_spot=" + f("sell_spot") +
+        " tick_count=" + f("tick_count") + " | fields: " + Object.keys(poc).join(","));
   }
   const digitLoses = (d) => (cfg.contract === "DIGITOVER" ? !(d > cfg.prediction) : !(d < cfg.prediction));
 
@@ -187,8 +296,13 @@ function startSniperEngine(deps, cfg, hooks) {
       if (unsub) { try { unsub(); } catch (_) {} }
       if (offRe) offRe();
     };
+    let subSocket = null;
     const open = function () {
-      if (unsub) { try { unsub(); } catch (_) {} }
+      if (finished) return;
+      const sid = socketId();
+      if (unsub && sid !== null && subSocket === sid) return;     // already watching on this connection
+      if (unsub) { try { unsub(); } catch (_) {} unsub = null; }
+      try {
       unsub = deps.subscribe({ proposal_open_contract: 1, contract_id: contractId }, function (data) {
         if (finished) return;
         if (data.error) { cleanup(); return rejectFinal(new Error(data.error.message || "Could not watch the contract.")); }
@@ -208,6 +322,14 @@ function startSniperEngine(deps, cfg, hooks) {
           cleanup(); resolveFinal(poc);
         }
       });
+      subSocket = sid;
+      } catch (e) {
+        // The socket is not ready right now (e.g. still CONNECTING): try again as soon as it is back.
+        unsub = null; subSocket = null;
+        waitForConnection().then(
+          function () { if (!finished) open(); },
+          function (err) { if (!finished) { cleanup(); rejectFinal(err); } });
+      }
     };
     open();
     offRe = deps.onReconnect ? deps.onReconnect(open) : null;
@@ -225,6 +347,9 @@ function startSniperEngine(deps, cfg, hooks) {
     ended = true;
     running = false;
     if (offTick) offTick();
+    if (offReconnect) offReconnect();
+    if (watchdog) clearInterval(watchdog);
+    reconnectNoticeOn = false;
     closeQuote(quote);
     quote = null;
     status("Stopped");
@@ -285,6 +410,7 @@ function startSniperEngine(deps, cfg, hooks) {
       const t = rec.ticks[fast.k - 1];
       if (t && digitLoses(t.digit) !== actualLoss) {
         fast.enabled = false; fast.streak = 0; fast.need = 10;
+        log("Fast loss reading switched off: tick " + fast.k + " did not match Deriv's result. It will re-learn.");
       }
       return;
     }
@@ -296,18 +422,23 @@ function startSniperEngine(deps, cfg, hooks) {
     } else { fast.k = null; fast.streak = 0; }
     if (fast.streak >= fast.need) {
       fast.enabled = true;
+      log("Fast loss reading ON: the result is decided by tick " + fast.k + " after the buy (confirmed on " + fast.streak + " trades in a row).");
     }
   }
 
   // The early (exit-digit) read said LOSS; this checks it against Deriv's final result.
   function reconcile(poc, stakeAtTrade, seenAt, fromTick, rec) {
     const actual = Number(poc.profit) || 0;
+    log("timing: Deriv's final 'sold' update came " + ms(seenAt, now()) + " after the loss was seen from the exit tick.");
     if (!wonOf(poc)) learnFromFinal(rec, true);
     if (wonOf(poc)) {
       earlyDisabled = true;
       if (fromTick) { fast.enabled = false; fast.streak = 0; fast.need = 10; }
       st.wins++;
       st.profit = round2(st.profit + actual + stakeAtTrade); // replace the assumed loss with the real result
+      log(fromTick
+        ? "WARNING: fast loss reading was wrong on that trade (it was a WIN). It is switched off and will re-learn."
+        : "WARNING: that trade was actually a WIN. Early reading switched off for the rest of this run.");
       pushStats();
     } else if (Math.abs(actual + stakeAtTrade) > 0.005) {
       st.profit = round2(st.profit + actual + stakeAtTrade);
@@ -329,10 +460,17 @@ function startSniperEngine(deps, cfg, hooks) {
         const bought = await (nextBuy ? nextBuy.promise : buyContract(stakeNow));
         nextBuy = null;
         const confirmedAt = now();
+        trackedContracts.add(String(bought.buy.contract_id));
+        log(lossSeenAt !== null
+          ? "timing: loss seen -> next buy confirmed in " + ms(lossSeenAt, confirmedAt) + " [" + lastTrace + "]"
+          : (tickAt !== null ? "timing: pattern tick -> buy confirmed in " + ms(tickAt, confirmedAt) + " [" + lastTrace + "]" : ""));
         tickAt = null;
         if (lossSeenAt !== null && lossExitTickAt !== null && tickInterval !== null) {
           const afterExit = confirmedAt - lossExitTickAt;
           const spare = Math.round(tickInterval - afterExit);
+          log("speed: result reached us " + Math.round(lossResultLag) + " ms after the exit tick; the next buy was confirmed " + Math.round(afterExit) +
+              " ms after it; ticks come every ~" + Math.round(tickInterval) + " ms -> " +
+              (spare > 0 ? "lands before the next tick (" + spare + " ms to spare)." : "MISSED the next tick by " + (-spare) + " ms."));
         }
         lossSeenAt = null; lossExitTickAt = null;
 
@@ -380,17 +518,32 @@ function startSniperEngine(deps, cfg, hooks) {
         pushStats();
         log((won ? "WON " : "LOST ") + profit.toFixed(2) + (provisional ? " (from exit tick)" : "") +
             " | total " + st.profit.toFixed(2) + " | next stake " + st.stake.toFixed(2));
+        if (note) log(note);
         if (hit) log(hit);
         else if (!nextBuy) ensureQuote(st.stake); // keep a live quote ready for whatever comes next
         // Recovery loop: the next buy is already on its way — track it, no waiting for a tick.
       } while (nextBuy || (running && st.recovery));
     } catch (e) {
-      log("Error: " + ((e && e.message) || "unknown") + " - bot stopped.");
+      if (!(e && e.stopAbort)) log("Error: " + ((e && e.message) || "unknown") + " - bot stopped.");
       running = false;
     }
     busy = false;
     if (running) status("Waiting for pattern"); else end();
   }
+
+  // After a reconnect: ticks were missed (a pattern must be built from fresh digits), the learned
+  // exit-tick position can't be trusted, and the old price quote belonged to the old connection.
+  offReconnect = deps.onReconnect ? deps.onReconnect(function () {
+    st.window.length = 0;
+    fast.enabled = false; fast.streak = 0;
+    quote = null;
+    if (lastQuoteStake !== null) ensureQuote(lastQuoteStake);
+  }) : null;
+
+  watchdog = deps.isOpen ? setInterval(function () {
+    if (ended) return;
+    if (!isOpen()) markDown(); else if (reconnectNoticeOn) markUp();
+  }, 500) : null;
 
   offTick = deps.onTick(function (t) {
     if (ended || t.symbol !== cfg.symbol) return;
