@@ -50,9 +50,10 @@
     console.debug("[Even/Odd bot] " + text);
     if (QUIET.test(text)) return;
     const bad = /^Error|stop loss|WARNING|Check settings|could take the loss|Not connected|Choose a synthetic|Account changed|is running/i.test(text);
-    const good = /Take profit/i.test(text);
+    const good = /Take profit|^Reconnected/i.test(text);
+    const warn = /^Connection lost/i.test(text);
     el.log.textContent = text;
-    el.log.className = "sniper-msg" + (bad ? " bad" : good ? " good" : "");
+    el.log.className = "sniper-msg" + (bad ? " bad" : good ? " good" : warn ? " warn" : "");
   }
   function clearMsg() { el.log.textContent = ""; el.log.className = "sniper-msg hidden"; }
 
@@ -78,7 +79,9 @@
   }
   function setStatus(text) {
     el.status.textContent = text;
-    el.status.classList.toggle("running", !/^(Idle|Stopped)/.test(text));
+    const reconnecting = /^Reconnecting/.test(text);
+    el.status.classList.toggle("running", !reconnecting && !/^(Idle|Stopped)/.test(text));
+    el.status.classList.toggle("warn", reconnecting);
   }
   const announce = (bot, on) => document.dispatchEvent(new CustomEvent("algotrade:sniper-run-state", { detail: { bot: bot, running: on } }));
 
@@ -155,8 +158,32 @@
   // ==========================================================
   // Run / Stop
   // ==========================================================
+  // Talks to the app's shared connection (api.js) and tells the bot WHY a request failed, so it can wait out
+  // a reconnect instead of stopping:
+  //   notSent        - the socket was not open, nothing left the browser (safe to send again)
+  //   connectionLost - the socket died while we waited for the reply (the request may or may not have arrived)
+  //   timeout        - no reply within 20 s
+  const isOpen = () => !!derivAPI.ws && derivAPI.ws.readyState === WebSocket.OPEN;
+  function sendWithDiagnosis(req) {
+    return new Promise((resolve, reject) => {
+      if (!isOpen()) { const e = new Error("Connection is not open"); e.notSent = true; reject(e); return; }
+      const ws = derivAPI.ws;
+      let done = false, watch = null, timer = null;
+      const finish = (fn, v) => { if (done) return; done = true; clearInterval(watch); clearTimeout(timer); fn(v); };
+      watch = setInterval(() => {
+        if (derivAPI.ws !== ws || ws.readyState !== WebSocket.OPEN) {
+          const e = new Error("Connection lost before the reply arrived"); e.connectionLost = true; finish(reject, e);
+        }
+      }, 200);
+      timer = setTimeout(() => { const e = new Error("No reply from Deriv within 20 seconds"); e.timeout = true; finish(reject, e); }, 20000);
+      derivAPI.send(req).then((r) => finish(resolve, r), (e) => finish(reject, e));
+    });
+  }
+
   const deps = {
-    send: (req) => derivAPI.send(req),
+    isOpen: isOpen,
+    socketId: () => derivAPI.ws,
+    send: sendWithDiagnosis,
     subscribe: (req, cb) => derivAPI.subscribe(req, cb),
     onTick: (fn) => {
       const h = (e) => fn(e.detail);
