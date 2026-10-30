@@ -23,7 +23,7 @@
     banner: $("eo-banner"), marketLine: $("eo-market-line"), hint: $("eo-hint"),
     mode: $("eo-mode"), duration: $("eo-duration"), nDigits: $("eo-ndigits"), maxRec: $("eo-maxrec"),
     stake: $("eo-stake"), mult: $("eo-mult"), tp: $("eo-tp"), sl: $("eo-sl"), maxTrades: $("eo-maxtrades"),
-    hardStop: $("eo-hardstop"), fastRead: $("eo-fastread"),
+    hardStop: $("eo-hardstop"), fastRead: $("eo-fastread"), cooldown: $("eo-cooldown"),
     run: $("eo-run"), stop: $("eo-stop"),
     status: $("eo-status"), last: $("eo-last"), next: $("eo-next"), profit: $("eo-profit"),
     log: $("eo-log"),
@@ -140,7 +140,7 @@
       currency: activeCurrency(), symbol: meta.symbol, pipDecimals: decimalPlacesFor(meta.pipSize),
       mode: el.mode.value, duration: num(el.duration), nDigits: num(el.nDigits), maxRecovery: num(el.maxRec),
       stake: num(el.stake), mult: num(el.mult), tp: num(el.tp), sl: num(el.sl), maxTrades: num(el.maxTrades),
-      hardStop: !!el.hardStop.checked, fastRead: !!el.fastRead.checked,
+      hardStop: !!el.hardStop.checked, fastRead: !!el.fastRead.checked, cooldown: !!el.cooldown.checked,
     };
     let err = null;
     if (!(cfg.stake >= 0.35)) err = "Stake must be at least 0.35.";
@@ -201,7 +201,7 @@
     el.run.disabled = on || otherRunning;
     el.run.title = otherRunning && !on ? "The Over/Under bot is running. Stop it first." : "";
     el.stop.disabled = !on;
-    [el.mode, el.duration, el.nDigits, el.maxRec, el.stake, el.mult, el.tp, el.sl, el.maxTrades, el.hardStop, el.fastRead]
+    [el.mode, el.duration, el.nDigits, el.maxRec, el.stake, el.mult, el.tp, el.sl, el.maxTrades, el.hardStop, el.fastRead, el.cooldown]
       .forEach((x) => { x.disabled = on; });
     // The shared market dropdown is locked while ANY sniper bot is running.
     const lock = on || otherRunning;
