@@ -419,7 +419,15 @@ function startEvenOddEngine(deps, cfg, hooks) {
     if (wasRecovery) {
       st.recCount++;
       if (st.recCount >= cfg.maxRecovery) {
-        st.recovery = false; st.recCount = 0; st.recoveryLocked = true;
+        st.recovery = false; st.recCount = 0;
+        if (cfg.cooldown) {
+          // Cooldown: act as if starting again. The stake goes back to the starting stake and recovery stays
+          // available, so the next pattern trade (at the starting stake) can start martingale + recovery again.
+          // Profit/loss, trade count and everything else recorded so far are left as they are.
+          st.stake = cfg.stake; st.recoveryLocked = false;
+          return "Recovery limit reached - cooldown: stake reset to the starting stake, starting again.";
+        }
+        st.recoveryLocked = true;
         return "Recovery limit reached - pattern trades only, recovery mode stays off until a pattern trade wins (stake kept).";
       }
     } else if (!st.recoveryLocked && cfg.maxRecovery > 0) {
