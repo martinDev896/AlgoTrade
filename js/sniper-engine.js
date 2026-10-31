@@ -5,8 +5,6 @@
 //
 //   - Waits for N digits in a row at/above (or at/below) a threshold.
 //   - Then buys a digits contract (Under/Over).
-//   - For multi-tick Digit Over, requests a market sale on the first winning
-//     tick (digit > prediction) while the contract is still open.
 //   - After a LOSS it buys again immediately (recovery trade), up to
 //     `maxRecovery` recovery trades in a row, then goes back to
 //     waiting for the pattern.
@@ -35,7 +33,9 @@
 function startSniperEngine(deps, cfg, hooks) {
   hooks = hooks || {};
   const log = hooks.log || function () {};
-  const status = hooks.status || function () {};
+  // `status` remembers the last status so it can be restored after a reconnect, and stays quiet while reconnecting.
+  let lastStatus = "", reconnectNoticeOn = false;
+  const status = function (s) { lastStatus = s; if (!reconnectNoticeOn && hooks.status) hooks.status(s); };
   const stats = hooks.stats || function () {};
   const round2 = (x) => Math.round(x * 100) / 100;
   const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
@@ -46,7 +46,7 @@ function startSniperEngine(deps, cfg, hooks) {
   // The first win clears it, and only then can recovery mode start again.
   const st = { stake: cfg.stake, recovery: false, recCount: 0, recoveryLocked: false, profit: 0, trades: 0, wins: 0, window: [] };
   let running = true, busy = false, ended = false;
-  let quote = null, offTick = null;
+  let quote = null, offTick = null, offReconnect = null, watchdog = null, lastQuoteStake = null;
   let earlyDisabled = false;
   // Tick timing (used for the speed readout and for the optional fast loss reading)
   let lastTickAt = null, tickInterval = null;   // tickInterval: running average gap between ticks (ms)
@@ -73,7 +73,7 @@ function startSniperEngine(deps, cfg, hooks) {
   // A live quote kept ready for the NEXT stake, so a buy can go out the
   // instant it's needed (the same cached-proposal approach Manual Trader uses).
   function openQuote(stake) {
-    const q = { stake: stake, latest: null, updatedAt: null, error: null, unsub: null };
+    const q = { stake: stake, latest: null, updatedAt: null, error: null, unsub: null, socket: socketId() };
     try {
       q.unsub = deps.subscribe(proposalReq(stake), function (data) {
         if (data.error) { q.latest = null; q.error = data.error.message || "quote error"; return; }
@@ -86,6 +86,7 @@ function startSniperEngine(deps, cfg, hooks) {
     if (q && q.unsub) { try { q.unsub(); } catch (_) {} }
   }
   function ensureQuote(stake) {
+    lastQuoteStake = stake;
     if (quote && quote.stake === stake) return;
     closeQuote(quote);
     quote = openQuote(stake);
@@ -100,9 +101,113 @@ function startSniperEngine(deps, cfg, hooks) {
   const NOT_READY = /wait|clos|settl|still|already|open|pending/i;
   const pause = (t) => new Promise((res) => setTimeout(res, t));
 
+  // ---------- Connection resilience ----------
+  // The app's socket can drop and rebuild itself (api.js / auth.js). While that happens the bot PAUSES
+  // and carries on by itself instead of stopping:
+  //  - requests wait for the connection to be back (up to 3 minutes),
+  //  - a request that never left the browser (socket still "CONNECTING") is simply sent again,
+  //  - a lost price request is simply asked again,
+  //  - a BUY whose reply was lost is checked against Deriv's own records first, so it is never bought twice,
+  //  - contract watching and price quotes are re-opened on the new connection.
+  const RECONNECT_WAIT_MS = cfg.reconnectWaitMs || 180000;
+  const isOpen = () => (deps.isOpen ? deps.isOpen() : true);
+  const socketId = () => (deps.socketId ? deps.socketId() : null);
+  const NOT_SENT = /Still in CONNECTING|CLOSING|CLOSED|not open|not connected/i;
+  const trackedContracts = new Set();
+  function stopAbortError() { const e = new Error("Stopped"); e.stopAbort = true; return e; }
+
+  // Shown whenever the connection is down while the bot runs (a watchdog also calls these, so the
+  // screen says "Reconnecting…" even when the bot is only waiting for a contract result).
+  function markDown() {
+    if (reconnectNoticeOn) return;
+    reconnectNoticeOn = true;
+    if (hooks.status) hooks.status("Reconnecting…");
+    log("Connection lost - waiting to reconnect. The bot resumes by itself.");
+  }
+  function markUp() {
+    if (!reconnectNoticeOn) return;
+    reconnectNoticeOn = false;
+    if (hooks.status && lastStatus) hooks.status(lastStatus);
+    log("Reconnected - bot resumed.");
+  }
+
+  async function waitForConnection() {
+    if (isOpen()) return;
+    const t0 = now();
+    markDown();
+    while (!isOpen()) {
+      if (ended) throw stopAbortError();
+      if (now() - t0 > RECONNECT_WAIT_MS) throw new Error("Connection was not restored in time. Check your open positions on Deriv");
+      await pause(250);
+    }
+    await pause(400);   // let the new connection settle
+    markUp();
+  }
+
+  // ctx is given for BUY requests only: { contract, stake }.
+  async function sendSafe(req, ctx) {
+    const sentEpoch = Math.floor(Date.now() / 1000);
+    let lastErr = null, rl = 0;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await waitForConnection();
+      if (ctx && !running) throw stopAbortError();                  // Stop was pressed before the buy left
+      try {
+        return await deps.send(req);
+      } catch (e) {
+        lastErr = e;
+        // Deriv's request budget is used up: wait a little (a refused buy was not placed, so asking again is safe).
+        if (isRateLimit(e)) { if (++rl > 8) throw e; noteRateLimit(); await pause(rateWait(rl - 1)); attempt--; continue; }
+        const msg = (e && e.message) || "";
+        if ((e && e.notSent) || NOT_SENT.test(msg)) continue;       // it never left the browser: send it again
+        if (e && (e.connectionLost || e.timeout)) {
+          if (!ctx) continue;                                       // a lost price request is harmless
+          const found = await findPurchasedContract(ctx, sentEpoch);   // did the buy go through?
+          if (found) {
+            log("Connection dropped while buying - the trade had gone through, carrying on with it.");
+            return { buy: { contract_id: found } };
+          }
+          continue;                                                 // confirmed NOT bought: try again
+        }
+        throw e;
+      }
+    }
+    throw lastErr || new Error("Connection kept dropping");
+  }
+
+  // After a lost buy reply: look in Deriv's open positions and recent closed trades for it.
+  // Only when BOTH lists could be read and neither has it do we treat the buy as "not placed".
+  async function findPurchasedContract(ctx, sentEpoch) {
+    await waitForConnection();
+    await pause(1500);                       // give Deriv a moment to finish anything it was processing
+    const untracked = (id) => !trackedContracts.has(String(id));
+    const recent = (t) => Number(t) >= sentEpoch - 30;
+    const sameStake = (p) => Math.abs(Number(p) - ctx.stake) < 0.005;
+    let checked = 0;
+    try {
+      const pf = await sendSafe({ portfolio: 1 });
+      const list = pf.portfolio && pf.portfolio.contracts;
+      if (Array.isArray(list)) {
+        checked++;
+        const hit = list.find((c) => c.contract_type === ctx.contract && sameStake(c.buy_price) && recent(c.purchase_time) && untracked(c.contract_id));
+        if (hit) return hit.contract_id;
+      }
+    } catch (_) { /* counted as not checked */ }
+    try {
+      const pt = await sendSafe({ profit_table: 1, description: 1, limit: 15, sort: "DESC" });
+      const list = pt.profit_table && pt.profit_table.transactions;
+      if (Array.isArray(list)) {
+        checked++;
+        const hit = list.find((t) => String(t.shortcode || "").indexOf(ctx.contract) === 0 && sameStake(t.buy_price) && recent(t.purchase_time) && untracked(t.contract_id));
+        if (hit) return hit.contract_id;
+      }
+    } catch (_) { /* counted as not checked */ }
+    if (checked < 2) throw new Error("Connection dropped while placing a trade and Deriv's records could not be checked. Check your open positions");
+    return null;
+  }
+
   async function buyContract(stake) {
     const parts = [];
-    let cached = quote && quote.stake === stake ? quote.latest : null;
+    let cached = quote && quote.stake === stake && quote.socket === socketId() ? quote.latest : null;
     if (!cached) {
       parts.push(quote && quote.stake === stake
         ? (quote.error ? "quote error: " + quote.error : "no quote had arrived yet")
@@ -115,18 +220,19 @@ function startSniperEngine(deps, cfg, hooks) {
           parts.push("cached quote, " + ms(quote.updatedAt, now()) + " old");
         } else {
           const tp = now();
-          const res = await deps.send(proposalReq(stake));
+          const res = await sendSafe(proposalReq(stake));
           parts.push("fresh quote " + ms(tp, now()));
           if (!res.proposal) throw new Error((res.error && res.error.message) || "No price available for this trade.");
           proposal = res.proposal;
         }
         const tb = now();
-        const r = await deps.send({ buy: proposal.id, price: proposal.ask_price });
+        const r = await sendSafe({ buy: proposal.id, price: proposal.ask_price }, { contract: cfg.contract, stake: stake });
         parts.push("buy " + ms(tb, now()));
         lastTrace = parts.join(" -> ");
         if (!r.buy || !r.buy.contract_id) throw new Error("Trade did not go through.");
         return r;
       } catch (e) {
+        if (e && e.stopAbort) { lastTrace = parts.join(" -> "); throw e; }
         const msg = (e && e.message) || "";
         parts.push("buy REJECTED (" + msg + ")");
         // A rejected buy created no contract, so one retry is safe.
@@ -144,13 +250,62 @@ function startSniperEngine(deps, cfg, hooks) {
     }
   }
 
+  // ---------- Rate limits ----------
+  // Deriv shares ONE budget (360 requests a minute) between proposal, proposal_open_contract, buy and sell.
+  // Hitting it must never stop the bot: it waits a little (longer each time) and carries on.
+  const RATE_BACKOFF_MS = cfg.rateBackoffMs || 2000;
+  const isRateLimit = (e) => !!e && (e.code === "RateLimit" || /rate limit/i.test(e.message || ""));
+  const rateWait = (n) => Math.min(RATE_BACKOFF_MS * Math.pow(2, n), 20000);
+  let rateNoticeAt = -1e9;
+  function noteRateLimit() {
+    if (now() - rateNoticeAt > 8000) { rateNoticeAt = now(); log("Deriv's rate limit was reached - slowing down, the bot continues."); }
+  }
+
+  // ---------- One shared stream for ALL open contracts ----------
+  // Instead of one proposal_open_contract request per trade, ONE stream (no contract_id) carries the updates
+  // of every open contract and each trade picks out its own. That saves a budgeted request on every trade.
+  // If the stream does not deliver (checked on the first trade) the bot goes back to one request per trade.
+  // A page can force the old way with: window.DERIV_NO_SHARED_STREAM = true
+  const FEED_WAIT_MS = cfg.feedWaitMs || 4000;     // how long a trade waits for its first update from the stream
+  const STALL_MS = cfg.stallMs || 10000;           // no update for this long -> ask for the contract directly
+  const feed = { on: cfg.sharedFeed !== false, unsub: null, socket: null, retryTimer: null, rl: 0, proven: false };
+  const watchers = new Map();                      // contract_id -> { handle(poc, viaFeed), startOwn() }
+  const dbg = (t) => { if (typeof console !== "undefined" && console.debug) console.debug("[sniper] " + t); };
+
+  function closeFeed() {
+    if (feed.unsub) { try { feed.unsub(); } catch (_) {} }
+    feed.unsub = null; feed.socket = null;
+  }
+  function openFeed() {
+    if (!feed.on || ended) return;
+    const sid = socketId();
+    if (feed.unsub && (sid === null || feed.socket === sid)) return;   // already open on this connection
+    closeFeed();
+    try {
+      feed.unsub = deps.subscribe({ proposal_open_contract: 1 }, function (data) {
+        if (data.error) { feedError(data.error); return; }
+        const poc = data.proposal_open_contract;
+        if (!poc) return;
+        const w = watchers.get(String(poc.contract_id));
+        if (w) w.handle(poc, true);
+      });
+      feed.socket = sid;
+    } catch (_) { feed.unsub = null; feed.socket = null; }              // not ready: retried by the next trade / reconnect
+  }
+  function feedError(err) {
+    closeFeed();
+    if (isRateLimit(err)) {
+      noteRateLimit();
+      if (!feed.retryTimer) feed.retryTimer = setTimeout(function () { feed.retryTimer = null; openFeed(); }, rateWait(feed.rl++));
+    } else {
+      feed.on = false;                                                  // not usable here: one request per trade from now on
+      dbg("shared contract stream unavailable (" + ((err && (err.message || err.code)) || "?") + ") - using one request per trade");
+      watchers.forEach(function (w) { w.startOwn(); });
+    }
+  }
+
   // ---------- Contract watching ----------
-  const wonOf = (poc) => {
-    // Early-sold contracts may report status "sold" rather than "won".
-    // Their actual financial result is determined by the confirmed profit.
-    if (poc.is_sold || poc.status === "sold") return Number(poc.profit) > 0;
-    return poc.status ? poc.status === "won" : Number(poc.profit) > 0;
-  };
+  const wonOf = (poc) => (poc.status ? poc.status === "won" : Number(poc.profit) > 0);
 
   // Last digit of the exit tick, read from the contract update itself.
   const EXIT_DISPLAY_FIELDS = ["exit_tick_display_value", "exit_spot_display_value", "sell_spot_display_value"];
@@ -172,16 +327,21 @@ function startSniperEngine(deps, cfg, hooks) {
   let debugContracts = 0;
   function debugUpdate(poc, openedAt, label) {
     const f = function (k) { return poc[k] === undefined ? "-" : String(poc[k]); };
+    log("debug " + label + " +" + ms(openedAt, now()) + ": status=" + f("status") + " expired=" + f("is_expired") + " sold=" + f("is_sold") +
+        " exit_tick=" + f("exit_tick") + " exit_display=" + f("exit_tick_display_value") + " sell_spot=" + f("sell_spot") +
+        " tick_count=" + f("tick_count") + " | fields: " + Object.keys(poc).join(","));
   }
   const digitLoses = (d) => (cfg.contract === "DIGITOVER" ? !(d > cfg.prediction) : !(d < cfg.prediction));
 
   // Returns { earlyLoss, final }:
   //   earlyLoss resolves the moment an update shows the contract has ended on a LOSING digit;
   //   final resolves with the settled contract (is_sold / status no longer "open").
+  // Updates come from the shared stream (or, as a fallback, this trade's own request).
   // Re-subscribes if the socket is rebuilt.
   function watchContract(contractId) {
-    let unsub = null, offRe = null, finished = false, earlySent = false;
+    let unsub = null, offRe = null, finished = false, earlySent = false, gotUpdate = false;
     let resolveEarly, resolveFinal, rejectFinal;
+    let fallbackTimer = null, stallTimer = null, ownTimer = null, ownRl = 0, subSocket = null;
     const openedAt = now();
     const doDebug = debugContracts < 2;
     let tickTrigger = false;
@@ -189,60 +349,95 @@ function startSniperEngine(deps, cfg, hooks) {
     let lastSig = "";
     const earlyLoss = new Promise((res) => { resolveEarly = res; });
     const final = new Promise((res, rej) => { resolveFinal = res; rejectFinal = rej; });
-    let sellInFlight = false;
-    let sellAccepted = false;
     const cleanup = function () {
       finished = true;
       if (unsub) { try { unsub(); } catch (_) {} }
       if (offRe) offRe();
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      if (stallTimer) clearTimeout(stallTimer);
+      if (ownTimer) clearTimeout(ownTimer);
+      watchers.delete(String(contractId));
     };
-    const open = function () {
-      if (unsub) { try { unsub(); } catch (_) {} }
-      unsub = deps.subscribe({ proposal_open_contract: 1, contract_id: contractId }, function (data) {
-        if (finished) return;
-        if (data.error) { cleanup(); return rejectFinal(new Error(data.error.message || "Could not watch the contract.")); }
-        const poc = data.proposal_open_contract;
-        if (!poc) return;
-        const settled = poc.is_sold || (poc.status && poc.status !== "open");
-        if (doDebug) {
-          const sig = [poc.status, poc.is_expired, poc.is_sold, poc.exit_tick, poc.tick_count].join("|");
-          if (sig !== lastSig) { lastSig = sig; debugUpdate(poc, openedAt, "update"); }   // only when something changed
-        }
-        if (!earlyDisabled && !earlySent && (poc.is_expired || settled)) {
-          const d = exitDigitOf(poc);
-          if (d !== null && digitLoses(d)) { earlySent = true; resolveEarly({ early: true }); }
-        }
-        if (settled) {
-          if (current && current.watch === api) current.kAtFinal = current.ticks.length;
-          cleanup(); resolveFinal(poc);
-        }
-      });
+    // If updates stop arriving, ask for this contract directly (it may have settled while the stream was quiet).
+    const armStall = function () {
+      if (stallTimer) clearTimeout(stallTimer);
+      stallTimer = setTimeout(function () { stallTimer = null; if (!finished) openOwn(); }, STALL_MS);
     };
-    open();
-    offRe = deps.onReconnect ? deps.onReconnect(open) : null;
+    // One contract update, from the shared stream or from this trade's own request.
+    const handle = function (poc, viaFeed) {
+      if (finished) return;
+      gotUpdate = true;
+      if (viaFeed) feed.proven = true;
+      armStall();
+      const settled = poc.is_sold || (poc.status && poc.status !== "open");
+      if (doDebug) {
+        const sig = [poc.status, poc.is_expired, poc.is_sold, poc.exit_tick, poc.tick_count].join("|");
+        if (sig !== lastSig) { lastSig = sig; debugUpdate(poc, openedAt, viaFeed ? "stream" : "update"); }   // only when something changed
+      }
+      if (!earlyDisabled && !earlySent && (poc.is_expired || settled)) {
+        const d = exitDigitOf(poc);
+        if (d !== null && digitLoses(d)) { earlySent = true; resolveEarly({ early: true }); }
+      }
+      if (settled) {
+        if (current && current.watch === api) current.kAtFinal = current.ticks.length;
+        cleanup(); resolveFinal(poc);
+      }
+    };
+    // This trade's OWN request (the old way): used as a fallback and after a reconnect.
+    const openOwn = function () {
+      if (finished) return;
+      const sid = socketId();
+      if (unsub && sid !== null && subSocket === sid) return;     // already watching on this connection
+      if (unsub) { try { unsub(); } catch (_) {} unsub = null; }
+      try {
+        unsub = deps.subscribe({ proposal_open_contract: 1, contract_id: contractId }, function (data) {
+          if (finished) return;
+          if (data.error) {
+            if (isRateLimit(data.error)) {                          // too many requests: wait, then ask again
+              noteRateLimit();
+              try { if (unsub) unsub(); } catch (_) {}
+              unsub = null; subSocket = null;
+              if (!ownTimer) ownTimer = setTimeout(function () { ownTimer = null; if (!finished) openOwn(); }, rateWait(ownRl++));
+              return;
+            }
+            cleanup(); return rejectFinal(new Error(data.error.message || "Could not watch the contract."));
+          }
+          if (data.proposal_open_contract) handle(data.proposal_open_contract, false);
+        });
+        subSocket = sid;
+      } catch (e) {
+        // The socket is not ready right now (e.g. still CONNECTING): try again as soon as it is back.
+        unsub = null; subSocket = null;
+        waitForConnection().then(
+          function () { if (!finished) openOwn(); },
+          function (err) { if (!finished) { cleanup(); rejectFinal(err); } });
+      }
+    };
     const api = {
       earlyLoss: earlyLoss,
       final: final,
-      // Sell an Over contract at market on the first winning tick while it is
-      // still open. A tick is only the trigger; the confirmed contract update
-      // remains the source of truth for the financial result.
-      tryEarlySell: function (digit) {
-        if (cfg.contract !== "DIGITOVER" || !(digit > cfg.prediction) || finished || sellInFlight || sellAccepted) return;
-        sellInFlight = true;
-        Promise.resolve().then(function () {
-          return deps.send({ sell: contractId, price: 0 });
-        }).then(function (res) {
-          if (res && res.error) throw new Error(res.error.message || "Early sale rejected.");
-          if (!res || !res.sell) throw new Error("Deriv did not confirm the early sale request.");
-          sellAccepted = true;
-        }).catch(function (e) {
-          sellInFlight = false;
-          if (!finished) log("Early sale request failed: " + ((e && e.message) || "unknown") + ". Will keep monitoring.");
-        });
-      },
-      // Fast loss reading is retained for one-tick contracts only.
+      // Fast loss reading: the exit tick has arrived on the tick feed and it is a losing digit.
       triggerEarly: function () { if (!earlySent && !finished) { earlySent = true; tickTrigger = true; resolveEarly({ early: true, fromTick: true }); } },
     };
+    watchers.set(String(contractId), { handle: handle, startOwn: openOwn });
+    if (feed.on) {
+      openFeed();
+      fallbackTimer = setTimeout(function () {
+        fallbackTimer = null;
+        if (finished || gotUpdate) return;
+        if (!feed.proven) {                                          // the stream never delivered: stop relying on it
+          feed.on = false; closeFeed();
+          dbg("shared contract stream gave no updates - using one request per trade");
+        }
+        openOwn();
+      }, FEED_WAIT_MS);
+      armStall();
+    } else {
+      openOwn();
+    }
+    // After a reconnect the stream is re-opened and this contract is also asked for directly
+    // (a contract that settled while offline no longer appears in a stream of OPEN contracts).
+    offRe = deps.onReconnect ? deps.onReconnect(function () { openOwn(); }) : null;
     return api;
   }
 
@@ -251,6 +446,11 @@ function startSniperEngine(deps, cfg, hooks) {
     ended = true;
     running = false;
     if (offTick) offTick();
+    if (offReconnect) offReconnect();
+    if (watchdog) clearInterval(watchdog);
+    if (feed.retryTimer) clearTimeout(feed.retryTimer);
+    closeFeed();
+    reconnectNoticeOn = false;
     closeQuote(quote);
     quote = null;
     status("Stopped");
@@ -294,7 +494,15 @@ function startSniperEngine(deps, cfg, hooks) {
     if (wasRecovery) {
       st.recCount++;
       if (st.recCount >= cfg.maxRecovery) {
-        st.recovery = false; st.recCount = 0; st.recoveryLocked = true;
+        st.recovery = false; st.recCount = 0;
+        if (cfg.cooldown) {
+          // Cooldown: act as if starting again. The stake goes back to the starting stake and recovery stays
+          // available, so the next pattern trade (at the starting stake) can start martingale + recovery again.
+          // Profit/loss, trade count and everything else recorded so far are left as they are.
+          st.stake = cfg.stake; st.recoveryLocked = false;
+          return "Recovery limit reached - cooldown: stake reset to the starting stake, starting again.";
+        }
+        st.recoveryLocked = true;
         return "Recovery limit reached - pattern trades only, recovery mode stays off until a pattern trade wins (stake kept).";
       }
     } else if (!st.recoveryLocked) {
@@ -311,6 +519,7 @@ function startSniperEngine(deps, cfg, hooks) {
       const t = rec.ticks[fast.k - 1];
       if (t && digitLoses(t.digit) !== actualLoss) {
         fast.enabled = false; fast.streak = 0; fast.need = 10;
+        log("Fast loss reading switched off: tick " + fast.k + " did not match Deriv's result. It will re-learn.");
       }
       return;
     }
@@ -322,18 +531,23 @@ function startSniperEngine(deps, cfg, hooks) {
     } else { fast.k = null; fast.streak = 0; }
     if (fast.streak >= fast.need) {
       fast.enabled = true;
+      log("Fast loss reading ON: the result is decided by tick " + fast.k + " after the buy (confirmed on " + fast.streak + " trades in a row).");
     }
   }
 
   // The early (exit-digit) read said LOSS; this checks it against Deriv's final result.
   function reconcile(poc, stakeAtTrade, seenAt, fromTick, rec) {
     const actual = Number(poc.profit) || 0;
+    log("timing: Deriv's final 'sold' update came " + ms(seenAt, now()) + " after the loss was seen from the exit tick.");
     if (!wonOf(poc)) learnFromFinal(rec, true);
     if (wonOf(poc)) {
       earlyDisabled = true;
       if (fromTick) { fast.enabled = false; fast.streak = 0; fast.need = 10; }
       st.wins++;
       st.profit = round2(st.profit + actual + stakeAtTrade); // replace the assumed loss with the real result
+      log(fromTick
+        ? "WARNING: fast loss reading was wrong on that trade (it was a WIN). It is switched off and will re-learn."
+        : "WARNING: that trade was actually a WIN. Early reading switched off for the rest of this run.");
       pushStats();
     } else if (Math.abs(actual + stakeAtTrade) > 0.005) {
       st.profit = round2(st.profit + actual + stakeAtTrade);
@@ -355,10 +569,17 @@ function startSniperEngine(deps, cfg, hooks) {
         const bought = await (nextBuy ? nextBuy.promise : buyContract(stakeNow));
         nextBuy = null;
         const confirmedAt = now();
+        trackedContracts.add(String(bought.buy.contract_id));
+        log(lossSeenAt !== null
+          ? "timing: loss seen -> next buy confirmed in " + ms(lossSeenAt, confirmedAt) + " [" + lastTrace + "]"
+          : (tickAt !== null ? "timing: pattern tick -> buy confirmed in " + ms(tickAt, confirmedAt) + " [" + lastTrace + "]" : ""));
         tickAt = null;
         if (lossSeenAt !== null && lossExitTickAt !== null && tickInterval !== null) {
           const afterExit = confirmedAt - lossExitTickAt;
           const spare = Math.round(tickInterval - afterExit);
+          log("speed: result reached us " + Math.round(lossResultLag) + " ms after the exit tick; the next buy was confirmed " + Math.round(afterExit) +
+              " ms after it; ticks come every ~" + Math.round(tickInterval) + " ms -> " +
+              (spare > 0 ? "lands before the next tick (" + spare + " ms to spare)." : "MISSED the next tick by " + (-spare) + " ms."));
         }
         lossSeenAt = null; lossExitTickAt = null;
 
@@ -406,17 +627,36 @@ function startSniperEngine(deps, cfg, hooks) {
         pushStats();
         log((won ? "WON " : "LOST ") + profit.toFixed(2) + (provisional ? " (from exit tick)" : "") +
             " | total " + st.profit.toFixed(2) + " | next stake " + st.stake.toFixed(2));
+        if (note) log(note);
         if (hit) log(hit);
         else if (!nextBuy) ensureQuote(st.stake); // keep a live quote ready for whatever comes next
         // Recovery loop: the next buy is already on its way — track it, no waiting for a tick.
       } while (nextBuy || (running && st.recovery));
     } catch (e) {
-      log("Error: " + ((e && e.message) || "unknown") + " - bot stopped.");
+      if (!(e && e.stopAbort)) log("Error: " + ((e && e.message) || "unknown") + " - bot stopped.");
       running = false;
     }
     busy = false;
     if (running) status("Waiting for pattern"); else end();
   }
+
+  // After a reconnect: ticks were missed (a pattern must be built from fresh digits), the learned
+  // exit-tick position can't be trusted, and the old price quote belonged to the old connection.
+  offReconnect = deps.onReconnect ? deps.onReconnect(function () {
+    st.window.length = 0;
+    fast.enabled = false; fast.streak = 0;
+    quote = null;
+    if (lastQuoteStake !== null) ensureQuote(lastQuoteStake);
+    feed.unsub = null; feed.socket = null;       // the old stream died with the old connection
+    openFeed();
+  }) : null;
+
+  watchdog = deps.isOpen ? setInterval(function () {
+    if (ended) return;
+    if (!isOpen()) markDown(); else if (reconnectNoticeOn) markUp();
+  }, 500) : null;
+
+  openFeed();
 
   offTick = deps.onTick(function (t) {
     if (ended || t.symbol !== cfg.symbol) return;
@@ -429,10 +669,7 @@ function startSniperEngine(deps, cfg, hooks) {
     lastTickAt = arrivedAt;
     if (current) {
       current.ticks.push({ digit: digit, at: arrivedAt });
-      // Multi-tick Digit Over: request a market sale on the first tick whose
-      // last digit is above the barrier. Settlement is still confirmed by POC.
-      if (cfg.contract === "DIGITOVER" && cfg.duration > 1) current.watch.tryEarlySell(digit);
-      if (cfg.duration === 1 && cfg.fastRead && fast.enabled && !current.firedEarly && current.ticks.length === fast.k && digitLoses(digit)) {
+      if (cfg.fastRead && fast.enabled && !current.firedEarly && current.ticks.length === fast.k && digitLoses(digit)) {
         current.firedEarly = true;
         current.watch.triggerEarly();
       }
