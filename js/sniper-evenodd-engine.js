@@ -168,7 +168,7 @@ function startEvenOddEngine(deps, cfg, hooks) {
   // ctx is given for BUY requests only: { contract, stake }.
   async function sendSafe(req, ctx) {
     const sentEpoch = Math.floor(Date.now() / 1000);
-    let lastErr = null;
+    let lastErr = null, rl = 0;
     for (let attempt = 0; attempt < 6; attempt++) {
       await waitForConnection();
       if (ctx && !running) throw stopAbortError();                  // Stop was pressed before the buy left
@@ -176,6 +176,8 @@ function startEvenOddEngine(deps, cfg, hooks) {
         return await deps.send(req);
       } catch (e) {
         lastErr = e;
+        // Deriv's request budget is used up: wait a little (a refused buy was not placed, so asking again is safe).
+        if (isRateLimit(e)) { if (++rl > 8) throw e; noteRateLimit(); await pause(rateWait(rl - 1)); attempt--; continue; }
         const msg = (e && e.message) || "";
         if ((e && e.notSent) || NOT_SENT.test(msg)) continue;       // it never left the browser: send it again
         if (e && (e.connectionLost || e.timeout)) {
@@ -268,6 +270,60 @@ function startEvenOddEngine(deps, cfg, hooks) {
     }
   }
 
+  // ---------- Rate limits ----------
+  // Deriv shares ONE budget (360 requests a minute) between proposal, proposal_open_contract, buy and sell.
+  // Hitting it must never stop the bot: it waits a little (longer each time) and carries on.
+  const RATE_BACKOFF_MS = cfg.rateBackoffMs || 2000;
+  const isRateLimit = (e) => !!e && (e.code === "RateLimit" || /rate limit/i.test(e.message || ""));
+  const rateWait = (n) => Math.min(RATE_BACKOFF_MS * Math.pow(2, n), 20000);
+  let rateNoticeAt = -1e9;
+  function noteRateLimit() {
+    if (now() - rateNoticeAt > 8000) { rateNoticeAt = now(); log("Deriv's rate limit was reached - slowing down, the bot continues."); }
+  }
+
+  // ---------- One shared stream for ALL open contracts ----------
+  // Instead of one proposal_open_contract request per trade, ONE stream (no contract_id) carries the updates
+  // of every open contract and each trade picks out its own. That saves a budgeted request on every trade.
+  // If the stream does not deliver (checked on the first trade) the bot goes back to one request per trade.
+  // A page can force the old way with: window.DERIV_NO_SHARED_STREAM = true
+  const FEED_WAIT_MS = cfg.feedWaitMs || 4000;     // how long a trade waits for its first update from the stream
+  const STALL_MS = cfg.stallMs || 10000;           // no update for this long -> ask for the contract directly
+  const feed = { on: cfg.sharedFeed !== false, unsub: null, socket: null, retryTimer: null, rl: 0, proven: false };
+  const watchers = new Map();                      // contract_id -> { handle(poc, viaFeed), startOwn() }
+  const dbg = (t) => { if (typeof console !== "undefined" && console.debug) console.debug("[sniper] " + t); };
+
+  function closeFeed() {
+    if (feed.unsub) { try { feed.unsub(); } catch (_) {} }
+    feed.unsub = null; feed.socket = null;
+  }
+  function openFeed() {
+    if (!feed.on || ended) return;
+    const sid = socketId();
+    if (feed.unsub && (sid === null || feed.socket === sid)) return;   // already open on this connection
+    closeFeed();
+    try {
+      feed.unsub = deps.subscribe({ proposal_open_contract: 1 }, function (data) {
+        if (data.error) { feedError(data.error); return; }
+        const poc = data.proposal_open_contract;
+        if (!poc) return;
+        const w = watchers.get(String(poc.contract_id));
+        if (w) w.handle(poc, true);
+      });
+      feed.socket = sid;
+    } catch (_) { feed.unsub = null; feed.socket = null; }              // not ready: retried by the next trade / reconnect
+  }
+  function feedError(err) {
+    closeFeed();
+    if (isRateLimit(err)) {
+      noteRateLimit();
+      if (!feed.retryTimer) feed.retryTimer = setTimeout(function () { feed.retryTimer = null; openFeed(); }, rateWait(feed.rl++));
+    } else {
+      feed.on = false;                                                  // not usable here: one request per trade from now on
+      dbg("shared contract stream unavailable (" + ((err && (err.message || err.code)) || "?") + ") - using one request per trade");
+      watchers.forEach(function (w) { w.startOwn(); });
+    }
+  }
+
   // ---------- Contract watching ----------
   const wonOf = (poc) => (poc.status ? poc.status === "won" : Number(poc.profit) > 0);
 
@@ -301,10 +357,12 @@ function startEvenOddEngine(deps, cfg, hooks) {
   // Returns { earlyLoss, final }:
   //   earlyLoss resolves the moment an update shows the contract has ended on a LOSING digit;
   //   final resolves with the settled contract (is_sold / status no longer "open").
+  // Updates come from the shared stream (or, as a fallback, this trade's own request).
   // Re-subscribes if the socket is rebuilt.
   function watchContract(contractId, contract) {
-    let unsub = null, offRe = null, finished = false, earlySent = false;
+    let unsub = null, offRe = null, finished = false, earlySent = false, gotUpdate = false;
     let resolveEarly, resolveFinal, rejectFinal;
+    let fallbackTimer = null, stallTimer = null, ownTimer = null, ownRl = 0, subSocket = null;
     const openedAt = now();
     const doDebug = debugContracts < 2;
     let tickTrigger = false;
@@ -316,50 +374,91 @@ function startEvenOddEngine(deps, cfg, hooks) {
       finished = true;
       if (unsub) { try { unsub(); } catch (_) {} }
       if (offRe) offRe();
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      if (stallTimer) clearTimeout(stallTimer);
+      if (ownTimer) clearTimeout(ownTimer);
+      watchers.delete(String(contractId));
     };
-    let subSocket = null;
-    const open = function () {
+    // If updates stop arriving, ask for this contract directly (it may have settled while the stream was quiet).
+    const armStall = function () {
+      if (stallTimer) clearTimeout(stallTimer);
+      stallTimer = setTimeout(function () { stallTimer = null; if (!finished) openOwn(); }, STALL_MS);
+    };
+    // One contract update, from the shared stream or from this trade's own request.
+    const handle = function (poc, viaFeed) {
+      if (finished) return;
+      gotUpdate = true;
+      if (viaFeed) feed.proven = true;
+      armStall();
+      const settled = poc.is_sold || (poc.status && poc.status !== "open");
+      if (doDebug) {
+        const sig = [poc.status, poc.is_expired, poc.is_sold, poc.exit_tick, poc.tick_count].join("|");
+        if (sig !== lastSig) { lastSig = sig; debugUpdate(poc, openedAt, viaFeed ? "stream" : "update"); }   // only when something changed
+      }
+      if (!earlyDisabled && !earlySent && (poc.is_expired || settled)) {
+        const d = exitDigitOf(poc);
+        if (d !== null && digitLoses(d, contract)) { earlySent = true; resolveEarly({ early: true }); }
+      }
+      if (settled) {
+        if (current && current.watch === api) current.kAtFinal = current.ticks.length;
+        cleanup(); resolveFinal(poc);
+      }
+    };
+    // This trade's OWN request (the old way): used as a fallback and after a reconnect.
+    const openOwn = function () {
       if (finished) return;
       const sid = socketId();
       if (unsub && sid !== null && subSocket === sid) return;     // already watching on this connection
       if (unsub) { try { unsub(); } catch (_) {} unsub = null; }
       try {
-      unsub = deps.subscribe({ proposal_open_contract: 1, contract_id: contractId }, function (data) {
-        if (finished) return;
-        if (data.error) { cleanup(); return rejectFinal(new Error(data.error.message || "Could not watch the contract.")); }
-        const poc = data.proposal_open_contract;
-        if (!poc) return;
-        const settled = poc.is_sold || (poc.status && poc.status !== "open");
-        if (doDebug) {
-          const sig = [poc.status, poc.is_expired, poc.is_sold, poc.exit_tick, poc.tick_count].join("|");
-          if (sig !== lastSig) { lastSig = sig; debugUpdate(poc, openedAt, "update"); }   // only when something changed
-        }
-        if (!earlyDisabled && !earlySent && (poc.is_expired || settled)) {
-          const d = exitDigitOf(poc);
-          if (d !== null && digitLoses(d, contract)) { earlySent = true; resolveEarly({ early: true }); }
-        }
-        if (settled) {
-          if (current && current.watch === api) current.kAtFinal = current.ticks.length;
-          cleanup(); resolveFinal(poc);
-        }
-      });
-      subSocket = sid;
+        unsub = deps.subscribe({ proposal_open_contract: 1, contract_id: contractId }, function (data) {
+          if (finished) return;
+          if (data.error) {
+            if (isRateLimit(data.error)) {                          // too many requests: wait, then ask again
+              noteRateLimit();
+              try { if (unsub) unsub(); } catch (_) {}
+              unsub = null; subSocket = null;
+              if (!ownTimer) ownTimer = setTimeout(function () { ownTimer = null; if (!finished) openOwn(); }, rateWait(ownRl++));
+              return;
+            }
+            cleanup(); return rejectFinal(new Error(data.error.message || "Could not watch the contract."));
+          }
+          if (data.proposal_open_contract) handle(data.proposal_open_contract, false);
+        });
+        subSocket = sid;
       } catch (e) {
         // The socket is not ready right now (e.g. still CONNECTING): try again as soon as it is back.
         unsub = null; subSocket = null;
         waitForConnection().then(
-          function () { if (!finished) open(); },
+          function () { if (!finished) openOwn(); },
           function (err) { if (!finished) { cleanup(); rejectFinal(err); } });
       }
     };
-    open();
-    offRe = deps.onReconnect ? deps.onReconnect(open) : null;
     const api = {
       earlyLoss: earlyLoss,
       final: final,
       // Fast loss reading: the exit tick has arrived on the tick feed and it is a losing digit.
       triggerEarly: function () { if (!earlySent && !finished) { earlySent = true; tickTrigger = true; resolveEarly({ early: true, fromTick: true }); } },
     };
+    watchers.set(String(contractId), { handle: handle, startOwn: openOwn });
+    if (feed.on) {
+      openFeed();
+      fallbackTimer = setTimeout(function () {
+        fallbackTimer = null;
+        if (finished || gotUpdate) return;
+        if (!feed.proven) {                                          // the stream never delivered: stop relying on it
+          feed.on = false; closeFeed();
+          dbg("shared contract stream gave no updates - using one request per trade");
+        }
+        openOwn();
+      }, FEED_WAIT_MS);
+      armStall();
+    } else {
+      openOwn();
+    }
+    // After a reconnect the stream is re-opened and this contract is also asked for directly
+    // (a contract that settled while offline no longer appears in a stream of OPEN contracts).
+    offRe = deps.onReconnect ? deps.onReconnect(function () { openOwn(); }) : null;
     return api;
   }
 
@@ -370,6 +469,8 @@ function startEvenOddEngine(deps, cfg, hooks) {
     if (offTick) offTick();
     if (offReconnect) offReconnect();
     if (watchdog) clearInterval(watchdog);
+    if (feed.retryTimer) clearTimeout(feed.retryTimer);
+    closeFeed();
     reconnectNoticeOn = false;
     closeAllQuotes();
     status("Stopped");
@@ -578,12 +679,16 @@ function startEvenOddEngine(deps, cfg, hooks) {
     fast.enabled = false; fast.streak = 0;
     quotes.clear();
     if (lastSpecs) setQuotes(lastSpecs);
+    feed.unsub = null; feed.socket = null;       // the old stream died with the old connection
+    openFeed();
   }) : null;
 
   watchdog = deps.isOpen ? setInterval(function () {
     if (ended) return;
     if (!isOpen()) markDown(); else if (reconnectNoticeOn) markUp();
   }, 500) : null;
+
+  openFeed();
 
   offTick = deps.onTick(function (t) {
     if (ended || t.symbol !== cfg.symbol) return;
