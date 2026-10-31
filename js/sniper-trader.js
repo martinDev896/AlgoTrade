@@ -72,7 +72,7 @@
     if (QUIET.test(text)) return;
     const bad = /^Error|stop loss|WARNING|Check settings|could take the loss|Not connected|Choose a synthetic|Account changed|is running/i.test(text);
     const good = /Take profit|^Reconnected/i.test(text);
-    const warn = /^Connection lost/i.test(text);
+    const warn = /^Connection lost|rate limit/i.test(text);
     el.log.textContent = text;
     el.log.className = "sniper-msg" + (bad ? " bad" : good ? " good" : warn ? " warn" : "");
   }
@@ -299,6 +299,7 @@
       hardStop: !!el.hardStop.checked,
       fastRead: !!el.fastRead.checked,
       cooldown: !!el.cooldown.checked,
+      sharedFeed: !window.DERIV_NO_SHARED_STREAM,
     };
     const over = cfg.contract === "DIGITOVER";
     const isDigit = (v) => Number.isInteger(v) && v >= 0 && v <= 9;
@@ -325,6 +326,21 @@
   //   notSent        - the socket was not open, nothing left the browser (safe to send again)
   //   connectionLost - the socket died while we waited for the reply (the request may or may not have arrived)
   //   timeout        - no reply within 20 s
+  // Deriv shares one budget (360 requests a minute) between proposal, proposal_open_contract, buy and sell.
+  // This keeps a running count of what THIS bot sends and mentions it in the browser console when it is high.
+  const BUDGETED = { proposal: 1, proposal_open_contract: 1, buy: 1, sell: 1 };
+  const stamps = [];
+  let lastCountNote = 0;
+  function countRequest(req) {
+    if (!BUDGETED[Object.keys(req)[0]]) return;
+    const t = Date.now();
+    stamps.push(t);
+    while (stamps.length && t - stamps[0] > 60000) stamps.shift();
+    if (stamps.length >= 200 && t - lastCountNote > 20000) {
+      lastCountNote = t;
+      console.debug("[sniper] about " + stamps.length + " budgeted requests in the last minute (Deriv's limit is 360)");
+    }
+  }
   const isOpen = () => !!derivAPI.ws && derivAPI.ws.readyState === WebSocket.OPEN;
   function sendWithDiagnosis(req) {
     return new Promise((resolve, reject) => {
@@ -338,6 +354,7 @@
         }
       }, 200);
       timer = setTimeout(() => { const e = new Error("No reply from Deriv within 20 seconds"); e.timeout = true; finish(reject, e); }, 20000);
+      countRequest(req);
       derivAPI.send(req).then((r) => finish(resolve, r), (e) => finish(reject, e));
     });
   }
@@ -346,7 +363,7 @@
     isOpen: isOpen,
     socketId: () => derivAPI.ws,
     send: sendWithDiagnosis,
-    subscribe: (req, cb) => derivAPI.subscribe(req, cb),
+    subscribe: (req, cb) => { countRequest(req); return derivAPI.subscribe(req, cb); },
     onTick: (fn) => {
       const h = (e) => fn(e.detail);
       document.addEventListener("algotrade:tick", h);
