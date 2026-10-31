@@ -27,17 +27,16 @@
     banner: $("sn-banner"), marketLine: $("sn-market-line"),
     contract: $("sn-contract"), prediction: $("sn-prediction"), duration: $("sn-duration"),
     nDigits: $("sn-ndigits"), compare: $("sn-compare"), threshold: $("sn-threshold"),
-    maxRec: $("sn-maxrec"), stake: $("sn-stake"), mult: $("sn-mult"), tp: $("sn-tp"), sl: $("sn-sl"), hardStop: $("sn-hardstop"), fastRead: $("sn-fastread"), cooldown: $("sn-cooldown"),
+    maxRec: $("sn-maxrec"), stake: $("sn-stake"), mult: $("sn-mult"), tp: $("sn-tp"), sl: $("sn-sl"), hardStop: $("sn-hardstop"), fastRead: $("sn-fastread"),
     run: $("sn-run"), stop: $("sn-stop"),
-    status: $("sn-status"), last: $("sn-last"), next: $("sn-next"), profit: $("sn-profit"),
+    status: $("sn-status"), trades: $("sn-trades"), wins: $("sn-wins"), next: $("sn-next"), profit: $("sn-profit"),
     log: $("sn-log"),
     digitsRow: $("sn-digits-row"), digitsLabel: $("sn-digits-label"), digitsNote: $("sn-digits-note"),
-    marketSelect: $("sn-market-select"), windowSelect: $("sn-window"),
+    marketSelect: $("sn-market-select"),
   };
 
   let session = null;           // running engine, if any
   let activeWinSet = null;      // digits that currently count as a win (while the bot's contract is open)
-  let clearAfterTick = false;   // the contract has ended: keep its colours through the exit tick, clear on the NEXT tick
 
   // ---------- helpers ----------
   const RISE_GREEN = "#2ECC8F";
@@ -64,60 +63,18 @@
   function tabIsVisible() {
     return !tabEl.classList.contains("hidden");
   }
-  // On-screen notice: only the latest IMPORTANT message is shown (errors, limits reached, warnings).
-  // The detailed trade log (timings, every trade) stays in the browser console (F12) for troubleshooting.
-  const QUIET = /^(timing:|speed:|debug |Pattern:|Started:|Stop requested|Fast loss reading ON|WON |LOST |Bot stopped)/;
   function log(text) {
-    console.debug("[Over/Under bot] " + text);
-    if (QUIET.test(text)) return;
-    const bad = /^Error|stop loss|WARNING|Check settings|could take the loss|Not connected|Choose a synthetic|Account changed|is running/i.test(text);
-    const good = /Take profit|^Reconnected/i.test(text);
-    const warn = /^Connection lost|rate limit/i.test(text);
-    el.log.textContent = text;
-    el.log.className = "sniper-msg" + (bad ? " bad" : good ? " good" : warn ? " warn" : "");
-  }
-  function clearMsg() { el.log.textContent = ""; el.log.className = "sniper-msg hidden"; }
-
-  const signed = (x) => (x > 0 ? "+" : "") + x.toFixed(2);
-  const tone = (node, v) => { node.classList.toggle("sniper-pos", v > 0); node.classList.toggle("sniper-neg", v < 0); };
-  let prevProfit = 0, prevTrades = 0;
-  function paintStats(s) {
-    el.profit.textContent = signed(s.profit);
-    tone(el.profit, s.profit);
-    if (s.trades > prevTrades) {                          // a trade just finished: show its result
-      const d = Math.round((s.profit - prevProfit) * 100) / 100;
-      el.last.textContent = "last trade " + signed(d);
-      tone(el.last, d);
-    }
-    prevProfit = s.profit; prevTrades = s.trades;
-    el.next.textContent = s.stake.toFixed(2);
-  }
-  function resetDash(stake) {
-    prevProfit = 0; prevTrades = 0;
-    el.profit.textContent = "0.00"; tone(el.profit, 0);
-    el.last.textContent = ""; tone(el.last, 0);
-    el.next.textContent = stake.toFixed(2);
-  }
-  function setStatus(text) {
-    el.status.textContent = text;
-    const reconnecting = /^Reconnecting/.test(text);
-    el.status.classList.toggle("running", !reconnecting && !/^(Idle|Stopped)/.test(text));
-    el.status.classList.toggle("warn", reconnecting);
+    const line = document.createElement("div");
+    line.className = "sniper-log-line";
+    line.textContent = "[" + new Date().toLocaleTimeString() + "] " + text;
+    el.log.appendChild(line);
+    el.log.scrollTop = el.log.scrollHeight;
   }
 
   // ==========================================================
   // Digit distribution widget (same look + same math as digits.js)
   // ==========================================================
-  // How many of the newest ticks the percentages use (shared with the Manual Trader widget).
-  const WINDOW_CHOICES = [1000, 500, 250, 100, 50, 25];
-  const WINDOW_KEY = "algotrade.digitWindow";
-  let digitWindow = (function () {
-    try {
-      const saved = Number(localStorage.getItem(WINDOW_KEY));
-      return WINDOW_CHOICES.indexOf(saved) !== -1 ? saved : 1000;
-    } catch (_) { return 1000; }
-  })();
-  let history = [];              // last-digit values, most recent last (always up to 1,000 kept)
+  let history = [];              // last-digit values, most recent last
   let historySymbol = null;      // which symbol `history` belongs to
   let cellRefs = [];
 
@@ -148,10 +105,9 @@
 
   function renderDigits() {
     if (cellRefs.length !== 10) buildCells();
-    const shown = history.length > digitWindow ? history.slice(-digitWindow) : history;
-    const total = shown.length || 1;
+    const total = history.length || 1;
     const counts = new Array(10).fill(0);
-    shown.forEach((d) => counts[d]++);
+    history.forEach((d) => counts[d]++);
     const max = Math.max.apply(null, counts);
     const min = Math.min.apply(null, counts);
     const last = history.length ? history[history.length - 1] : null;
@@ -206,9 +162,6 @@
   // Live ticks: shared broadcast from markets.js (no new subscription).
   document.addEventListener("algotrade:tick", (e) => {
     if (e.detail.symbol !== historySymbol) return;
-    // Same behaviour as the Manual Trader widget: the exit tick is drawn with its win/lose colours,
-    // and only the tick AFTER it draws the normal percentages again.
-    if (clearAfterTick) { activeWinSet = null; clearAfterTick = false; }
     const meta = symbolMeta(historySymbol);
     const places = decimalPlacesFor(meta ? meta.pipSize : 0.01);
     history.push(Number(Number(e.detail.quote).toFixed(places).slice(-1)));
@@ -241,25 +194,12 @@
     el.marketSelect.value = ok ? meta.symbol : "";
     el.marketLine.textContent = ok ? meta.displayName : "No synthetic index selected";
     el.digitsNote.classList.toggle("hidden", ok);
-    el.digitsLabel.textContent = "Last digit distribution — last " + digitWindow.toLocaleString("en-US") + " ticks" +
-      (ok ? " · " + meta.displayName : "");
+    el.digitsLabel.textContent = ok
+      ? "Last digit distribution — last 1,000 ticks · " + meta.displayName
+      : "Last digit distribution — last 1,000 ticks";
     if (ok && tabIsVisible() && historySymbol !== meta.symbol) loadHistoryFor(meta.symbol);
     if (!ok) { history = []; historySymbol = null; renderDigits(); }
   }
-
-  function setWindow(n, announce) {
-    el.windowSelect.value = String(digitWindow);
-    if (WINDOW_CHOICES.indexOf(n) === -1 || n === digitWindow) return;
-    digitWindow = n;
-    try { localStorage.setItem(WINDOW_KEY, String(n)); } catch (_) { /* setting just isn't remembered */ }
-    el.windowSelect.value = String(n);
-    syncSelection();            // refreshes the label
-    renderDigits();
-    if (announce) document.dispatchEvent(new CustomEvent("algotrade:digit-window-changed", { detail: { count: n } }));
-  }
-  el.windowSelect.value = String(digitWindow);
-  el.windowSelect.addEventListener("change", () => setWindow(Number(el.windowSelect.value), true));
-  document.addEventListener("algotrade:digit-window-changed", (e) => setWindow(e.detail.count, false));
 
   el.marketSelect.addEventListener("change", () => {
     const symbol = el.marketSelect.value;
@@ -298,8 +238,6 @@
       sl: num(el.sl),
       hardStop: !!el.hardStop.checked,
       fastRead: !!el.fastRead.checked,
-      cooldown: !!el.cooldown.checked,
-      sharedFeed: !window.DERIV_NO_SHARED_STREAM,
     };
     const over = cfg.contract === "DIGITOVER";
     const isDigit = (v) => Number.isInteger(v) && v >= 0 && v <= 9;
@@ -321,49 +259,9 @@
   // ==========================================================
   // Run / Stop
   // ==========================================================
-  // Talks to the app's shared connection (api.js) and tells the bot WHY a request failed, so it can wait out
-  // a reconnect instead of stopping:
-  //   notSent        - the socket was not open, nothing left the browser (safe to send again)
-  //   connectionLost - the socket died while we waited for the reply (the request may or may not have arrived)
-  //   timeout        - no reply within 20 s
-  // Deriv shares one budget (360 requests a minute) between proposal, proposal_open_contract, buy and sell.
-  // This keeps a running count of what THIS bot sends and mentions it in the browser console when it is high.
-  const BUDGETED = { proposal: 1, proposal_open_contract: 1, buy: 1, sell: 1 };
-  const stamps = [];
-  let lastCountNote = 0;
-  function countRequest(req) {
-    if (!BUDGETED[Object.keys(req)[0]]) return;
-    const t = Date.now();
-    stamps.push(t);
-    while (stamps.length && t - stamps[0] > 60000) stamps.shift();
-    if (stamps.length >= 200 && t - lastCountNote > 20000) {
-      lastCountNote = t;
-      console.debug("[sniper] about " + stamps.length + " budgeted requests in the last minute (Deriv's limit is 360)");
-    }
-  }
-  const isOpen = () => !!derivAPI.ws && derivAPI.ws.readyState === WebSocket.OPEN;
-  function sendWithDiagnosis(req) {
-    return new Promise((resolve, reject) => {
-      if (!isOpen()) { const e = new Error("Connection is not open"); e.notSent = true; reject(e); return; }
-      const ws = derivAPI.ws;
-      let done = false, watch = null, timer = null;
-      const finish = (fn, v) => { if (done) return; done = true; clearInterval(watch); clearTimeout(timer); fn(v); };
-      watch = setInterval(() => {
-        if (derivAPI.ws !== ws || ws.readyState !== WebSocket.OPEN) {
-          const e = new Error("Connection lost before the reply arrived"); e.connectionLost = true; finish(reject, e);
-        }
-      }, 200);
-      timer = setTimeout(() => { const e = new Error("No reply from Deriv within 20 seconds"); e.timeout = true; finish(reject, e); }, 20000);
-      countRequest(req);
-      derivAPI.send(req).then((r) => finish(resolve, r), (e) => finish(reject, e));
-    });
-  }
-
   const deps = {
-    isOpen: isOpen,
-    socketId: () => derivAPI.ws,
-    send: sendWithDiagnosis,
-    subscribe: (req, cb) => { countRequest(req); return derivAPI.subscribe(req, cb); },
+    send: (req) => derivAPI.send(req),
+    subscribe: (req, cb) => derivAPI.subscribe(req, cb),
     onTick: (fn) => {
       const h = (e) => fn(e.detail);
       document.addEventListener("algotrade:tick", h);
@@ -376,31 +274,13 @@
     },
   };
 
-  // The Even/Odd bot (sniper-evenodd.js) shares this tab. Only one sniper bot may run at a time.
-  let otherRunning = false;
-  document.addEventListener("algotrade:sniper-run-state", (e) => {
-    if (e.detail.bot === "overunder") return;
-    otherRunning = !!e.detail.running;
-    setRunningUI(!!session);
-  });
-  // The Even/Odd bot colours the digit widget through this event while its contract is open.
-  document.addEventListener("algotrade:sniper-contract", (e) => {
-    if (e.detail.open) { activeWinSet = new Set(e.detail.winDigits); clearAfterTick = false; renderDigits(); }
-    else clearAfterTick = true;
-  });
-  function announceRunState(on) {
-    document.dispatchEvent(new CustomEvent("algotrade:sniper-run-state", { detail: { bot: "overunder", running: on } }));
-  }
-
   function setRunningUI(on) {
-    el.run.disabled = on || otherRunning;
-    el.run.title = otherRunning && !on ? "The Even/Odd bot is running. Stop it first." : "";
+    el.run.disabled = on;
     el.stop.disabled = !on;
-    const lock = on || otherRunning;
-    el.marketSelect.disabled = lock;
-    el.marketSelect.title = lock ? "Stop the running bot to change market" : "";
+    el.marketSelect.disabled = on;
+    el.marketSelect.title = on ? "Stop the bot to change market" : "";
     [el.contract, el.prediction, el.duration, el.nDigits, el.compare, el.threshold,
-     el.maxRec, el.stake, el.mult, el.tp, el.sl, el.hardStop, el.fastRead, el.cooldown].forEach((x) => { x.disabled = on; });
+     el.maxRec, el.stake, el.mult, el.tp, el.sl, el.hardStop, el.fastRead].forEach((x) => { x.disabled = on; });
   }
 
   function winSetFor(contract, prediction) {
@@ -413,7 +293,6 @@
 
   el.run.addEventListener("click", () => {
     if (session) return;
-    if (otherRunning) { log("The Even/Odd bot is running. Stop it first."); return; }
     if (!derivAPI.ws || derivAPI.ws.readyState !== WebSocket.OPEN) { log("Not connected to Deriv yet."); return; }
     const cfg = readConfig();
     if (!cfg) return;
@@ -423,18 +302,23 @@
       if (!confirm("This bot will run on your REAL account and place real trades. Continue?")) return;
     }
 
-    clearMsg();
-    resetDash(cfg.stake);
+    el.log.innerHTML = "";
     setRunningUI(true);
     session = startSniperEngine(deps, cfg, {
       log: log,
-      status: setStatus,
-      stats: paintStats,
-      bought: () => { activeWinSet = winSetFor(cfg.contract, cfg.prediction); clearAfterTick = false; renderDigits(); },
-      settled: () => { clearAfterTick = true; },
-      finished: () => { clearAfterTick = true; session = null; announceRunState(false); setRunningUI(false); },
+      status: (s) => { el.status.textContent = s; },
+      stats: (s) => {
+        el.trades.textContent = s.trades;
+        el.wins.textContent = s.wins;
+        el.profit.textContent = s.profit.toFixed(2);
+        el.profit.classList.toggle("sniper-pos", s.profit > 0);
+        el.profit.classList.toggle("sniper-neg", s.profit < 0);
+        el.next.textContent = s.stake.toFixed(2);
+      },
+      bought: () => { activeWinSet = winSetFor(cfg.contract, cfg.prediction); renderDigits(); },
+      settled: () => { activeWinSet = null; renderDigits(); },
+      finished: () => { activeWinSet = null; session = null; setRunningUI(false); renderDigits(); },
     });
-    announceRunState(true);
   });
 
   el.stop.addEventListener("click", () => { if (session) session.stop(); });
