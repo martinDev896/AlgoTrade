@@ -453,3 +453,31 @@ body.sniper-active footer {
 /* Reconnecting: amber, so it reads as "paused", not "failed" */
 .sniper-chip.warn { background: rgba(212, 169, 74, 0.18); color: #8A6A14; }
 .sniper-msg.warn { background: rgba(212, 169, 74, 0.15); color: #8A6A14; }
+
+/* Trades / Won / Lost, under the Profit / Loss figure */
+.sniper-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.75rem;
+  margin-top: 0.3rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid #E4E7EB;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  color: #6B7280;
+}
+.sniper-counts span { white-space: nowrap; }          /* each item wraps as a unit, never mid-label */
+.sniper-counts b { color: #1A1D22; font-weight: 700; }
+.sniper-counts .won b { color: var(--rise); }
+.sniper-counts .lost b { color: var(--fall); }
+
+@media (max-width: 480px) {
+  .sniper-counts { gap: 0.05rem 0.5rem; font-size: 0.64rem; }
+}
+
+/* Very narrow phones: the status chip gets its own line so the two tiles share the full width */
+@media (max-width: 400px) {
+  .sniper-dash { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+  .sniper-chip { grid-column: 1 / -1; justify-self: start; }
+  .sniper-tile { min-width: 0; padding: 0.45rem 0.6rem; }
+}
