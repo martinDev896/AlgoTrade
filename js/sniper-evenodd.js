@@ -25,7 +25,7 @@
     stake: $("eo-stake"), mult: $("eo-mult"), tp: $("eo-tp"), sl: $("eo-sl"), maxTrades: $("eo-maxtrades"),
     hardStop: $("eo-hardstop"), fastRead: $("eo-fastread"), cooldown: $("eo-cooldown"),
     run: $("eo-run"), stop: $("eo-stop"),
-    status: $("eo-status"), last: $("eo-last"), next: $("eo-next"), profit: $("eo-profit"),
+    status: $("eo-status"), last: $("eo-last"), trades: $("eo-trades"), wins: $("eo-wins"), losses: $("eo-losses"), next: $("eo-next"), profit: $("eo-profit"),
     log: $("eo-log"),
   };
 
@@ -70,12 +70,16 @@
     }
     prevProfit = s.profit; prevTrades = s.trades;
     el.next.textContent = s.stake.toFixed(2);
+    el.trades.textContent = s.trades;
+    el.wins.textContent = s.wins;
+    el.losses.textContent = Math.max(0, s.trades - s.wins);
   }
   function resetDash(stake) {
     prevProfit = 0; prevTrades = 0;
     el.profit.textContent = "0.00"; tone(el.profit, 0);
     el.last.textContent = ""; tone(el.last, 0);
     el.next.textContent = stake.toFixed(2);
+    el.trades.textContent = "0"; el.wins.textContent = "0"; el.losses.textContent = "0";
   }
   function setStatus(text) {
     el.status.textContent = text;
