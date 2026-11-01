@@ -29,7 +29,7 @@
     nDigits: $("sn-ndigits"), compare: $("sn-compare"), threshold: $("sn-threshold"),
     maxRec: $("sn-maxrec"), stake: $("sn-stake"), mult: $("sn-mult"), tp: $("sn-tp"), sl: $("sn-sl"), hardStop: $("sn-hardstop"), fastRead: $("sn-fastread"), cooldown: $("sn-cooldown"),
     run: $("sn-run"), stop: $("sn-stop"),
-    status: $("sn-status"), last: $("sn-last"), next: $("sn-next"), profit: $("sn-profit"),
+    status: $("sn-status"), last: $("sn-last"), trades: $("sn-trades"), wins: $("sn-wins"), losses: $("sn-losses"), next: $("sn-next"), profit: $("sn-profit"),
     log: $("sn-log"),
     digitsRow: $("sn-digits-row"), digitsLabel: $("sn-digits-label"), digitsNote: $("sn-digits-note"),
     marketSelect: $("sn-market-select"), windowSelect: $("sn-window"),
@@ -91,12 +91,16 @@
     }
     prevProfit = s.profit; prevTrades = s.trades;
     el.next.textContent = s.stake.toFixed(2);
+    el.trades.textContent = s.trades;
+    el.wins.textContent = s.wins;
+    el.losses.textContent = Math.max(0, s.trades - s.wins);
   }
   function resetDash(stake) {
     prevProfit = 0; prevTrades = 0;
     el.profit.textContent = "0.00"; tone(el.profit, 0);
     el.last.textContent = ""; tone(el.last, 0);
     el.next.textContent = stake.toFixed(2);
+    el.trades.textContent = "0"; el.wins.textContent = "0"; el.losses.textContent = "0";
   }
   function setStatus(text) {
     el.status.textContent = text;
