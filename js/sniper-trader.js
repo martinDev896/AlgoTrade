@@ -26,7 +26,7 @@
   const el = {
     banner: $("sn-banner"), marketLine: $("sn-market-line"),
     contract: $("sn-contract"), prediction: $("sn-prediction"), duration: $("sn-duration"),
-    nDigits: $("sn-ndigits"), compare: $("sn-compare"), threshold: $("sn-threshold"),
+    nDigits: $("sn-ndigits"), confirm: $("sn-confirm"), compare: $("sn-compare"), threshold: $("sn-threshold"),
     maxRec: $("sn-maxrec"), stake: $("sn-stake"), mult: $("sn-mult"), tp: $("sn-tp"), sl: $("sn-sl"), hardStop: $("sn-hardstop"), fastRead: $("sn-fastread"), cooldown: $("sn-cooldown"),
     run: $("sn-run"), stop: $("sn-stop"),
     status: $("sn-status"), last: $("sn-last"), trades: $("sn-trades"), wins: $("sn-wins"), losses: $("sn-losses"), next: $("sn-next"), profit: $("sn-profit"),
@@ -293,6 +293,7 @@
       prediction: num(el.prediction),
       duration: num(el.duration),
       nDigits: num(el.nDigits),
+      confirmDigits: num(el.confirm),
       compare: el.compare.value,
       threshold: num(el.threshold),
       maxRecovery: num(el.maxRec),
@@ -313,6 +314,7 @@
       err = over ? "Digit Over needs a prediction from 0 to 8." : "Digit Under needs a prediction from 1 to 9.";
     else if (!isDigit(cfg.threshold)) err = "Pattern digit must be from 0 to 9.";
     else if (!Number.isInteger(cfg.nDigits) || cfg.nDigits < 1 || cfg.nDigits > 10) err = "Digits in a row must be a whole number from 1 to 10.";
+    else if (!Number.isInteger(cfg.confirmDigits) || cfg.confirmDigits < 0 || cfg.confirmDigits > 10) err = "Confirm digits must be a whole number from 0 to 10 (0 = off).";
     else if (!Number.isInteger(cfg.duration) || cfg.duration < 1) err = "Duration must be at least 1 tick.";
     else if (!Number.isInteger(cfg.maxRecovery) || cfg.maxRecovery < 1) err = "Max recovery trades must be at least 1.";
     else if (!(cfg.mult >= 1)) err = "Multiplier must be 1 or more.";
@@ -403,7 +405,7 @@
     const lock = on || otherRunning;
     el.marketSelect.disabled = lock;
     el.marketSelect.title = lock ? "Stop the running bot to change market" : "";
-    [el.contract, el.prediction, el.duration, el.nDigits, el.compare, el.threshold,
+    [el.contract, el.prediction, el.duration, el.nDigits, el.confirm, el.compare, el.threshold,
      el.maxRec, el.stake, el.mult, el.tp, el.sl, el.hardStop, el.fastRead, el.cooldown].forEach((x) => { x.disabled = on; });
   }
 
