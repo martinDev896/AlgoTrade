@@ -21,7 +21,7 @@
   const el = {
     pickOU: $("sn-pick-ou"), pickEO: $("sn-pick-eo"), cardOU: $("sn-ou-card"), cardEO: $("sn-eo-card"),
     banner: $("eo-banner"), marketLine: $("eo-market-line"), hint: $("eo-hint"),
-    mode: $("eo-mode"), duration: $("eo-duration"), nDigits: $("eo-ndigits"), maxRec: $("eo-maxrec"),
+    mode: $("eo-mode"), duration: $("eo-duration"), nDigits: $("eo-ndigits"), confirm: $("eo-confirm"), maxRec: $("eo-maxrec"),
     stake: $("eo-stake"), mult: $("eo-mult"), tp: $("eo-tp"), sl: $("eo-sl"), maxTrades: $("eo-maxtrades"),
     hardStop: $("eo-hardstop"), fastRead: $("eo-fastread"), cooldown: $("eo-cooldown"),
     run: $("eo-run"), stop: $("eo-stop"),
@@ -131,9 +131,11 @@
     const mode = el.mode.value;
     const odd = "<b>EVEN</b> after " + n + " odd digits in a row";
     const even = "<b>ODD</b> after " + n + " even digits in a row";
-    el.hint.innerHTML = "Buys " + (mode === "even" ? odd : mode === "odd" ? even : odd + " and " + even) + ".";
+    const k = Number(el.confirm.value) || 0;
+    const wait = k > 0 ? " Then it waits for <b>" + k + "</b> winning digit" + (k === 1 ? "" : "s") + " before trading." : "";
+    el.hint.innerHTML = "Buys " + (mode === "even" ? odd : mode === "odd" ? even : odd + " and " + even) + "." + wait;
   }
-  [el.mode, el.nDigits].forEach((x) => x.addEventListener("input", updateHint));
+  [el.mode, el.nDigits, el.confirm].forEach((x) => x.addEventListener("input", updateHint));
   updateHint();
 
   function readConfig() {
@@ -142,13 +144,14 @@
     const num = (inp) => Number(inp.value);
     const cfg = {
       currency: activeCurrency(), symbol: meta.symbol, pipDecimals: decimalPlacesFor(meta.pipSize),
-      mode: el.mode.value, duration: num(el.duration), nDigits: num(el.nDigits), maxRecovery: num(el.maxRec),
+      mode: el.mode.value, duration: num(el.duration), nDigits: num(el.nDigits), confirmDigits: num(el.confirm), maxRecovery: num(el.maxRec),
       stake: num(el.stake), mult: num(el.mult), tp: num(el.tp), sl: num(el.sl), maxTrades: num(el.maxTrades),
       hardStop: !!el.hardStop.checked, fastRead: !!el.fastRead.checked, cooldown: !!el.cooldown.checked, sharedFeed: !window.DERIV_NO_SHARED_STREAM,
     };
     let err = null;
     if (!(cfg.stake >= 0.35)) err = "Stake must be at least 0.35.";
     else if (!Number.isInteger(cfg.nDigits) || cfg.nDigits < 2 || cfg.nDigits > 10) err = "Digits in a row must be a whole number from 2 to 10.";
+    else if (!Number.isInteger(cfg.confirmDigits) || cfg.confirmDigits < 0 || cfg.confirmDigits > 10) err = "Confirm digits must be a whole number from 0 to 10 (0 = off).";
     else if (!Number.isInteger(cfg.duration) || cfg.duration < 1 || cfg.duration > 10) err = "Duration must be a whole number of ticks from 1 to 10.";
     else if (!Number.isInteger(cfg.maxRecovery) || cfg.maxRecovery < 0) err = "Max recovery trades must be 0 or more (0 = no recovery).";
     else if (!(cfg.mult >= 1)) err = "Multiplier must be 1 or more.";
@@ -221,7 +224,7 @@
     el.run.disabled = on || otherRunning;
     el.run.title = otherRunning && !on ? "The Over/Under bot is running. Stop it first." : "";
     el.stop.disabled = !on;
-    [el.mode, el.duration, el.nDigits, el.maxRec, el.stake, el.mult, el.tp, el.sl, el.maxTrades, el.hardStop, el.fastRead, el.cooldown]
+    [el.mode, el.duration, el.nDigits, el.confirm, el.maxRec, el.stake, el.mult, el.tp, el.sl, el.maxTrades, el.hardStop, el.fastRead, el.cooldown]
       .forEach((x) => { x.disabled = on; });
     // The shared market dropdown is locked while ANY sniper bot is running.
     const lock = on || otherRunning;
