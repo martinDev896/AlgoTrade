@@ -481,3 +481,6 @@ body.sniper-active footer {
   .sniper-chip { grid-column: 1 / -1; justify-self: start; }
   .sniper-tile { min-width: 0; padding: 0.45rem 0.6rem; }
 }
+
+/* "In a row" and "Confirm" always stay side by side, even when the row wraps on a phone */
+.fld-pair { display: flex; align-items: flex-end; gap: 0.8rem; }
