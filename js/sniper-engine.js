@@ -463,6 +463,24 @@ function startSniperEngine(deps, cfg, hooks) {
     st.window.length === cfg.nDigits &&
     st.window.every((d) => (cfg.compare === "GTE" ? d >= cfg.threshold : d <= cfg.threshold));
 
+  // ---------- Confirmation digits ----------
+  // With "confirm digits" above 0, the bot does not trade the moment the pattern appears. It arms itself,
+  // then waits until that many digits on the WINNING side of the contract have appeared (any such digits,
+  // not necessarily in a row) and only then trades. This keeps it out of a streak that is still running.
+  // A fresh appearance of the pattern starts the count again. At 0 this is switched off and the bot
+  // trades on the pattern alone, exactly as before.
+  const arm = { on: false, count: 0 };
+  function disarm() { arm.on = false; arm.count = 0; }
+  function confirmedEntry(digit) {
+    if (arm.on && !digitLoses(digit)) {                 // a winning-side digit since the pattern appeared
+      arm.count++;
+      if (arm.count >= cfg.confirmDigits) { disarm(); return true; }
+      status("Confirming " + arm.count + "/" + cfg.confirmDigits);
+    }
+    if (patternMet()) { arm.on = true; arm.count = 0; status("Confirming 0/" + cfg.confirmDigits); }
+    return false;
+  }
+
   function pushStats() {
     stats({ trades: st.trades, wins: st.wins, profit: st.profit, stake: st.stake });
   }
@@ -559,6 +577,7 @@ function startSniperEngine(deps, cfg, hooks) {
 
   async function cycle(tickAt) {
     busy = true;
+    disarm();
     let nextBuy = null;   // a recovery buy already sent, waiting to be tracked
     let lossSeenAt = null, lossExitTickAt = null, lossResultLag = 0;
     try {
@@ -644,6 +663,7 @@ function startSniperEngine(deps, cfg, hooks) {
   // exit-tick position can't be trusted, and the old price quote belonged to the old connection.
   offReconnect = deps.onReconnect ? deps.onReconnect(function () {
     st.window.length = 0;
+    disarm();
     fast.enabled = false; fast.streak = 0;
     quote = null;
     if (lastQuoteStake !== null) ensureQuote(lastQuoteStake);
@@ -677,7 +697,10 @@ function startSniperEngine(deps, cfg, hooks) {
     st.window.push(digit);
     if (st.window.length > cfg.nDigits) st.window.shift();
     if (hooks.tickDigit) hooks.tickDigit(digit);
-    if (running && !busy && patternMet()) cycle(arrivedAt);
+    if (running && !busy) {
+      const go = cfg.confirmDigits > 0 ? confirmedEntry(digit) : patternMet();
+      if (go) cycle(arrivedAt);
+    }
   });
 
   ensureQuote(st.stake);
