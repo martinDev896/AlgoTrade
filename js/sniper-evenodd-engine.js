@@ -489,6 +489,25 @@ function startEvenOddEngine(deps, cfg, hooks) {
     return null;
   }
 
+  // ---------- Confirmation digits ----------
+  // With "confirm digits" above 0, the bot does not trade the moment the pattern appears. It arms itself for
+  // the contract the pattern points to, then waits until that many digits on the WINNING side of that contract
+  // have appeared (any such digits, not necessarily in a row) and only then trades. This keeps it out of a
+  // streak that is still running. A fresh appearance of the pattern starts the count again. At 0 this is
+  // switched off and the bot trades on the pattern alone, exactly as before.
+  const arm = { contract: null, count: 0 };
+  function disarm() { arm.contract = null; arm.count = 0; }
+  function confirmedEntry(digit) {
+    if (arm.contract && !digitLoses(digit, arm.contract)) {      // a winning-side digit since the pattern appeared
+      arm.count++;
+      if (arm.count >= cfg.confirmDigits) { const c = arm.contract; disarm(); return c; }
+      status("Confirming " + arm.count + "/" + cfg.confirmDigits);
+    }
+    const p = patternContract();
+    if (p) { arm.contract = p; arm.count = 0; status("Confirming 0/" + cfg.confirmDigits); }
+    return null;
+  }
+
   function pushStats() {
     stats({ trades: st.trades, wins: st.wins, profit: st.profit, stake: st.stake });
   }
@@ -585,6 +604,7 @@ function startEvenOddEngine(deps, cfg, hooks) {
 
   async function cycle(tickAt) {
     busy = true;
+    disarm();
     let nextBuy = null;   // a recovery buy already sent, waiting to be tracked
     let lossSeenAt = null, lossExitTickAt = null, lossResultLag = 0;
     try {
@@ -595,7 +615,7 @@ function startEvenOddEngine(deps, cfg, hooks) {
         const sentAt = nextBuy ? nextBuy.sentAt : now();
         if (tickAt !== null) {
           const run = contractNow === "DIGITEVEN" ? "odd" : "even";
-          log("Pattern: " + cfg.nDigits + " " + run + " digits in a row -> buying " + (contractNow === "DIGITEVEN" ? "EVEN" : "ODD") + " (stake " + stakeNow.toFixed(2) + ").");
+          log("Pattern: " + cfg.nDigits + " " + run + " digits in a row" + (cfg.confirmDigits > 0 ? " + " + cfg.confirmDigits + " confirming digits" : "") + " -> buying " + (contractNow === "DIGITEVEN" ? "EVEN" : "ODD") + " (stake " + stakeNow.toFixed(2) + ").");
         }
         const bought = await (nextBuy ? nextBuy.promise : buyContract(contractNow, stakeNow));
         nextBuy = null;
@@ -676,6 +696,7 @@ function startEvenOddEngine(deps, cfg, hooks) {
   // exit-tick position can't be trusted, and the old price quotes belonged to the old connection.
   offReconnect = deps.onReconnect ? deps.onReconnect(function () {
     st.window.length = 0;
+    disarm();
     fast.enabled = false; fast.streak = 0;
     quotes.clear();
     if (lastSpecs) setQuotes(lastSpecs);
@@ -710,7 +731,7 @@ function startEvenOddEngine(deps, cfg, hooks) {
     if (st.window.length > cfg.nDigits) st.window.shift();
     if (hooks.tickDigit) hooks.tickDigit(digit);
     if (running && !busy) {
-      const c = patternContract();
+      const c = cfg.confirmDigits > 0 ? confirmedEntry(digit) : patternContract();
       if (c) { st.contract = c; cycle(arrivedAt); }
     }
   });
