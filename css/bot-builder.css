@@ -1,0 +1,53 @@
+/* AlgoTrade — Bot Builder (Deriv blocks). Loaded after css/style.css. Everything here is scoped to the Bot Builder tab. */
+
+/* ==========================================================
+   Bot Builder — Deriv's block workspace (deriv-bot/deriv-bot.js)
+   ========================================================== */
+
+.bot-workspace-container {
+  flex: 1;              /* the workspace takes all the room the toolbar and log leave over */
+  min-height: 420px;
+  position: relative;
+}
+
+.bot-log {
+  flex: 0 0 auto;
+  min-height: 70px;
+  max-height: 120px;
+}
+
+.btn-bot-run.bot-soon { opacity: 0.55; }
+.btn-bot-run.bot-soon:hover { cursor: not-allowed; }
+
+.bot-log-line.error { color: var(--fall); }
+.bot-log-line.success { color: var(--rise); }
+
+/* Deriv's stylesheet styles the workspace for its own (React) toolbox, which this site doesn't use — it uses
+   Blockly's built-in one. These overrides re-colour it: a light toolbox, a solid flyout panel, calmer scrollbars.
+   The extra class names are there to out-rank Deriv's selectors. */
+.bot-workspace-container .injectionDiv { font-family: sans-serif; } /* Blockly measures block text in sans-serif */
+.bot-workspace-container .zelos-renderer.zelos_renderer-theme .blocklyToolboxDiv {
+  background-color: #F5F6F8;
+  color: #1A1D22;
+  border-right: 1px solid #E4E7EB;
+  padding-top: 0.4rem;
+}
+.bot-workspace-container .zelos-renderer.zelos_renderer-theme .blocklyFlyoutBackground { fill: #FFFFFF; fill-opacity: 1; }
+.bot-workspace-container .zelos-renderer.zelos_renderer-theme .blocklyToolboxCategory { padding: 0.15rem 0.5rem; cursor: pointer; }
+.bot-workspace-container .zelos-renderer.zelos_renderer-theme .blocklyToolboxCategory .blocklyTreeLabel {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 0.85rem;
+  color: #1A1D22;
+}
+.bot-workspace-container .zelos-renderer.zelos_renderer-theme .blocklyToolboxCategory:hover { background: rgba(212,169,74,0.14); }
+.bot-workspace-container .zelos-renderer.zelos_renderer-theme .blocklyToolboxSelected { background: rgba(212,169,74,0.3) !important; }
+.bot-workspace-container .zelos-renderer.zelos_renderer-theme .blocklyScrollbarHandle { fill: #C9CED6; }
+
+@media (max-width: 900px) {
+  /* On small screens the tab scrolls inside the page instead of spilling over the footer. */
+  #tab-bot-builder { overflow-y: auto; }
+  .bot-builder { height: auto; }
+  .bot-workspace-container { flex: none; min-height: 440px; }
+  .bot-workspace-container .zelos-renderer.zelos_renderer-theme .blocklyToolboxCategory { padding: 0.1rem 0.3rem; }
+  .bot-workspace-container .zelos-renderer.zelos_renderer-theme .blocklyToolboxCategory .blocklyTreeLabel { font-size: 0.72rem; }
+}
