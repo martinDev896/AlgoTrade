@@ -219,28 +219,29 @@
         <p class="coming-soon">Copy Trading is coming soon.</p>
       </div>
 
-      <!-- ============ TAB: BOT BUILDER (placeholder) ============ -->
+     <!-- ============ TAB: BOT BUILDER (placeholder) ============ -->
       <div id="tab-bot-builder" class="tab-panel hidden">
         <div class="bot-builder">
           <div class="bot-toolbar">
-            <button id="bot-run-btn" class="btn-bot-run">▶ Run</button>
+            <button id="bot-run-btn" class="btn-bot-run bot-soon" title="Running bots is the next phase">▶ Run</button>
             <button id="bot-stop-btn" class="btn-bot-stop" disabled>■ Stop</button>
             <span class="bot-toolbar-divider"></span>
-            <button id="bot-save-btn" class="btn-bot-tool">Save</button>
-            <button id="bot-load-btn" class="btn-bot-tool">Load</button>
             <button id="bot-import-btn" class="btn-bot-tool">Import</button>
             <input id="bot-import-input" type="file" accept=".xml,text/xml,application/xml" class="hidden" />
+            <button id="bot-export-btn" class="btn-bot-tool">Export</button>
             <button id="bot-clear-btn" class="btn-bot-tool">Clear</button>
-            <span id="bot-status" class="bot-status">Not running</span>
+            <span id="bot-status" class="bot-status">Open this tab to load the blocks</span>
           </div>
-
+ 
           <div id="bot-workspace-container" class="bot-workspace-container"></div>
-
+ 
           <div id="bot-log" class="bot-log">
-            <p class="bot-log-empty">Trade log will appear here once the bot runs.</p>
+            <p class="bot-log-empty">Messages about imports and exports appear here.</p>
           </div>
         </div>
       </div>
+ 
+    </section>
 
       <!-- ============ TAB: SNIPER TRADER ============ -->
       <div id="tab-sniper-trader" class="tab-panel hidden">
