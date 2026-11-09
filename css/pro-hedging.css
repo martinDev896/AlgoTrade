@@ -53,25 +53,31 @@ body.hedge-active footer {
 .ph-dg.skip { background: rgba(212, 169, 74, 0.2); color: #8A6A14; }
 .ph-dash-note { font-size: 0.7rem; color: #9AA3AF; }
 
-/* ---------- Confirmation progress bars ---------- */
-.ph-progress { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.6rem 1rem; margin-bottom: 0.8rem; }
-.ph-prog-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.72rem; color: #6B7280; margin-bottom: 0.25rem; }
-.ph-prog-top b { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #1A1D22; }
+/* ---------- Confirmation progress bars (entry / recovery pattern / recovery confirmation) ---------- */
+.ph-progress { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0.6rem 1rem; margin-bottom: 0.9rem; }
+.ph-prog-top { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; font-size: 0.72rem; color: #6B7280; margin-bottom: 0.25rem; }
+.ph-prog-top b { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #1A1D22; white-space: nowrap; }
 .ph-bar { height: 8px; border-radius: 999px; background: #EEF0F3; overflow: hidden; }
 .ph-bar > i { display: block; height: 100%; width: 0; border-radius: 999px; background: var(--gold); transition: width 0.15s ease; }
 .ph-bar.ready > i { background: var(--rise); }
 .ph-bar.idle > i { background: #C9CED6; }
 
-/* ---------- Tile grid ---------- */
-.ph-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 0.5rem; }
-.ph-grid .sniper-tile { min-width: 0; }
-.ph-grid .sniper-big { font-size: 1.1rem; overflow-wrap: anywhere; }
-.ph-grid .sniper-big.sm { font-size: 0.95rem; }
-.ph-tile-wide { grid-column: span 2; }
-.ph-sub { font-family: 'JetBrains Mono', monospace; font-size: 0.66rem; color: #9AA3AF; min-height: 0.85rem; }
+/* ---------- Digit distribution widget (sits between the progress bars and the boxes) ---------- */
+.ph-widget { margin: 0.2rem 0 1rem; padding: 0.8rem 0 0.9rem; border-top: 1px solid #EEF0F3; border-bottom: 1px solid #EEF0F3; }
+.ph-widget .sniper-digits-head { margin-bottom: 0.6rem; }
+
+/* ---------- The three boxes: profit / next stake / contracts ---------- */
+.ph-stats { display: grid; grid-template-columns: 1.3fr 0.8fr 1.5fr; gap: 0.5rem; }
+.ph-stats .sniper-tile { min-width: 0; }
+.ph-stats .sniper-big { font-size: 1.15rem; overflow-wrap: anywhere; }
+.ph-sub { display: block; font-family: 'JetBrains Mono', monospace; font-size: 0.64rem; color: #9AA3AF; min-height: 0.8rem; }
 .ph-sub.est { color: #8A6A14; }
-.sniper-big.ph-reached { color: var(--fall); }
-.sniper-big.ph-ok { color: var(--rise); }
+.ph-counts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.3rem; margin-top: 0.15rem; }
+.ph-counts > div { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.ph-counts small { font-size: 0.56rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #9AA3AF; }
+.ph-counts b { font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; font-weight: 600; line-height: 1.25; color: #1A1D22; }
+.ph-counts b.sniper-pos { color: var(--rise); }
+.ph-counts b.sniper-neg { color: var(--fall); }
 
 /* ---------- Trade history ---------- */
 .ph-hist-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
@@ -99,9 +105,12 @@ body.hedge-active footer {
 /* ---------- Small screens ---------- */
 @media (max-width: 480px) {
   .fld .trade-select.ph-select-market, .fld .trade-select.ph-select-limit { min-width: 0; width: 100%; }
-  .ph-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .ph-tile-wide { grid-column: span 2; }
+  .ph-stats { grid-template-columns: 1fr 1fr; }
+  .ph-stats > .sniper-tile:first-child { grid-column: span 2; }
+  .ph-counts b { font-size: 0.88rem; }
+  .ph-counts small { font-size: 0.52rem; }
   .ph-digit-now { width: 2.5rem; height: 2.5rem; font-size: 1.3rem; }
   .ph-dg { width: 1.2rem; height: 1.2rem; font-size: 0.66rem; }
   .ph-progress { grid-template-columns: 1fr; }
+  .ph-widget { padding: 0.6rem 0 0.7rem; }
 }
