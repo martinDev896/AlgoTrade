@@ -7,6 +7,7 @@
 // Shares with the Sniper Trader tab:
 //   - the app's ONE connection (derivAPI) and the ONE tick feed ("algotrade:tick")
 //   - the ONE market selection (AppState.selectedSymbol / selectSymbol)
+//   - the digit-distribution widget's tick window (localStorage + "algotrade:digit-window-changed")
 //   - the one-bot-at-a-time rule ("algotrade:sniper-run-state"): this bot
 //     announces itself as "prohedging", which the Over/Under bot already reacts to
 // ==========================================================
@@ -21,28 +22,27 @@
   const el = {
     marketLine: $("ph-market-line"), banner: $("ph-banner"), marketSelect: $("ph-market-select"),
     stake: $("ph-stake"), duration: $("ph-duration"), nDigits: $("ph-ndigits"), tp: $("ph-tp"), sl: $("ph-sl"),
-    confirm: $("ph-confirm"), mult: $("ph-mult"), maxRec: $("ph-maxrec"), recDur: $("ph-recdur"),
+    pattern: $("ph-pattern"), confirm: $("ph-confirm"), mult: $("ph-mult"), maxRec: $("ph-maxrec"), recDur: $("ph-recdur"),
     maxStake: $("ph-maxstake"), afterLimit: $("ph-afterlimit"),
     recovery: $("ph-recovery"), immediate: $("ph-immediate"), fast: $("ph-fast"), hardStop: $("ph-hardstop"),
     preview: $("ph-preview"), run: $("ph-run"), stop: $("ph-stop"), msg: $("ph-msg"),
     mode: $("ph-mode"), digitNow: $("ph-digit-now"), digits: $("ph-digits"),
-    entryTxt: $("ph-entry-txt"), entryBar: $("ph-entry-bar"), recLabel: $("ph-rec-label"), recTxt: $("ph-rec-txt"), recBar: $("ph-rec-bar"),
-    profit: $("ph-profit"), profitSub: $("ph-profit-sub"),
-    tMarket: $("ph-t-market"), tStake: $("ph-t-stake"), tNext: $("ph-t-next"), tLevel: $("ph-t-level"),
-    tRecContract: $("ph-t-reccontract"), tRecAttempts: $("ph-t-recattempts"),
-    tBought: $("ph-t-bought"), tWins: $("ph-t-wins"), tLosses: $("ph-t-losses"),
-    tSl: $("ph-t-sl"), tSlSub: $("ph-t-sl-sub"), tTp: $("ph-t-tp"), tTpSub: $("ph-t-tp-sub"), tTime: $("ph-t-time"),
+    entryTxt: $("ph-entry-txt"), entryBar: $("ph-entry-bar"),
+    patLabel: $("ph-pat-label"), patTxt: $("ph-pat-txt"), patBar: $("ph-pat-bar"),
+    recLabel: $("ph-rec-label"), recTxt: $("ph-rec-txt"), recBar: $("ph-rec-bar"),
+    profit: $("ph-profit"), profitSub: $("ph-profit-sub"), profitLimits: $("ph-profit-limits"),
+    tNext: $("ph-t-next"), cBought: $("ph-c-bought"), cWins: $("ph-c-wins"), cLosses: $("ph-c-losses"),
     histBody: $("ph-hist-body"), histEmpty: $("ph-hist-empty"),
+    windowSelect: $("ph-window"), widgetMarket: $("ph-widget-market"),
+    digitsLabel: $("ph-digits-label"), digitsNote: $("ph-digits-note"), digitsRow: $("ph-digits-row"),
   };
 
-  const SETTINGS = [el.marketSelect, el.stake, el.duration, el.nDigits, el.tp, el.sl, el.confirm, el.mult, el.maxRec, el.recDur,
+  const SETTINGS = [el.marketSelect, el.widgetMarket, el.stake, el.duration, el.nDigits, el.tp, el.sl, el.pattern, el.confirm, el.mult, el.maxRec, el.recDur,
     el.maxStake, el.afterLimit, el.recovery, el.immediate, el.fast, el.hardStop];
 
   let session = null;
   let lastCfg = null;
-  let startedAt = null, timer = null;
   let otherRunning = null;            // name of another bot that is running, if any
-  let recent = [];                    // last digits for the strip
 
   // ---------- helpers ----------
   const money = (x) => (x === null || x === undefined || isNaN(x) ? "—" : Number(x).toFixed(2));
@@ -56,7 +56,7 @@
 
   // ---------- messages ----------
   // On screen: only the latest IMPORTANT message. Everything (timings, each step) goes to the console (F12).
-  const QUIET = /^(timing:|Started:|Stop requested|Recovery for the losing|Recovery won|Both contracts won|Bot stopped|Reconnected|Connection lost)/;
+  const QUIET = /^(timing:|Started:|Stop requested|Recovery for the losing|Pattern complete|Losing digit \d during confirmation|Recovery won|Both contracts won|Bot stopped|Reconnected|Connection lost)/;
   function log(text) {
     console.debug("[Pro Hedging] " + text);
     if (QUIET.test(text)) return;
@@ -71,18 +71,139 @@
   function clearMsg() { el.msg.textContent = ""; el.msg.className = "sniper-msg hidden"; }
 
   // ==========================================================
-  // Market dropdown (shared selection — same approach as the Sniper tab)
+  // Digit distribution widget (same look + same math as the Sniper tab / digits.js)
+  // ==========================================================
+  const RISE_GREEN = "#2ECC8F", FALL_RED = "#FF5C5C";
+  // How many of the newest ticks the percentages use (shared with the Manual Trader and Sniper widgets).
+  const WINDOW_CHOICES = [1000, 500, 250, 100, 50, 25];
+  const WINDOW_KEY = "algotrade.digitWindow";
+  let digitWindow = (function () {
+    try {
+      const saved = Number(localStorage.getItem(WINDOW_KEY));
+      return WINDOW_CHOICES.indexOf(saved) !== -1 ? saved : 1000;
+    } catch (_) { return 1000; }
+  })();
+  let history = [];              // last-digit values, most recent last (up to 1,000 kept)
+  let historySymbol = null;      // which symbol `history` belongs to
+  let cellRefs = [];
+
+  function buildCells() {
+    el.digitsRow.innerHTML = "";
+    cellRefs = [];
+    for (let d = 0; d <= 9; d++) {
+      const cell = document.createElement("div");
+      cell.className = "digit-cell";
+      cell.innerHTML =
+        '<svg viewBox="0 0 44 44" class="digit-ring">' +
+        '<circle cx="22" cy="22" r="18" class="digit-ring-bg" />' +
+        '<circle cx="22" cy="22" r="14" class="digit-fill" fill="none" />' +
+        '<circle cx="22" cy="22" r="18" class="digit-ring-fg" transform="rotate(-90 22 22)" />' +
+        '<text x="22" y="27" class="digit-ring-text">' + d + "</text></svg>" +
+        '<span class="digit-pct">0.0%</span><span class="digit-cursor hidden"></span>';
+      el.digitsRow.appendChild(cell);
+      cellRefs.push({
+        root: cell,
+        ringFg: cell.querySelector(".digit-ring-fg"),
+        fill: cell.querySelector(".digit-fill"),
+        text: cell.querySelector(".digit-ring-text"),
+        pct: cell.querySelector(".digit-pct"),
+        cursor: cell.querySelector(".digit-cursor"),
+      });
+    }
+  }
+
+  function renderDigits() {
+    if (cellRefs.length !== 10) buildCells();
+    const shown = history.length > digitWindow ? history.slice(-digitWindow) : history;
+    const total = shown.length || 1;
+    const counts = new Array(10).fill(0);
+    shown.forEach((d) => counts[d]++);
+    const max = Math.max.apply(null, counts);
+    const min = Math.min.apply(null, counts);
+    const last = history.length ? history[history.length - 1] : null;
+    const circumference = 2 * Math.PI * 18;
+    for (let d = 0; d <= 9; d++) {
+      const ref = cellRefs[d];
+      const pct = (counts[d] / total) * 100;
+      const isMax = counts[d] === max && max !== min;
+      const isMin = counts[d] === min && max !== min;
+      ref.ringFg.setAttribute("stroke", isMax ? RISE_GREEN : isMin ? FALL_RED : "#D4A94A");
+      ref.ringFg.setAttribute("stroke-dasharray", circumference);
+      ref.ringFg.setAttribute("stroke-dashoffset", circumference - (pct / 100) * circumference);
+      ref.fill.setAttribute("fill", "none");
+      ref.text.setAttribute("fill", "#1A1D22");
+      ref.pct.textContent = pct.toFixed(1) + "%";
+      ref.root.classList.toggle("digit-cell-active", last === d);
+      ref.cursor.classList.toggle("hidden", last !== d);
+    }
+    paintDigits();
+  }
+
+  // Latest digit + the short strip (the last 20 digits, with 4 and 5 picked out in gold).
+  function paintDigits() {
+    const last = history.length ? history[history.length - 1] : null;
+    el.digitNow.textContent = last === null ? "–" : String(last);
+    el.digitNow.classList.toggle("skip", last === 4 || last === 5);
+    el.digits.innerHTML = history.slice(-20).map((d) => '<span class="ph-dg' + (d === 4 || d === 5 ? " skip" : "") + '">' + d + "</span>").join("");
+  }
+
+  async function loadHistoryFor(symbol) {
+    const meta = symbolMeta(symbol);
+    historySymbol = symbol;
+    history = [];
+    renderDigits();
+    try {
+      const res = await derivAPI.send({ ticks_history: symbol, style: "ticks", count: 1000, end: "latest" });
+      const prices = (res.history && res.history.prices) || res.prices || [];
+      if (historySymbol === symbol) {   // the market may have been switched meanwhile
+        const places = decimalPlacesFor(meta ? meta.pipSize : 0.01);
+        history = prices.map((p) => Number(Number(p).toFixed(places).slice(-1)));
+        renderDigits();
+      }
+    } catch (err) {
+      console.error("Pro Hedging digits history failed:", err.message);
+    }
+  }
+
+  // Live ticks: the shared broadcast from markets.js (no new subscription).
+  document.addEventListener("algotrade:tick", (e) => {
+    if (e.detail.symbol !== historySymbol) return;
+    const meta = symbolMeta(historySymbol);
+    const places = decimalPlacesFor(meta ? meta.pipSize : 0.01);
+    history.push(Number(Number(e.detail.quote).toFixed(places).slice(-1)));
+    if (history.length > 1000) history.shift();
+    if (tabIsVisible()) renderDigits();
+  });
+
+  function setWindow(n, announce) {
+    el.windowSelect.value = String(digitWindow);
+    if (WINDOW_CHOICES.indexOf(n) === -1 || n === digitWindow) return;
+    digitWindow = n;
+    try { localStorage.setItem(WINDOW_KEY, String(n)); } catch (_) { /* setting just isn't remembered */ }
+    el.windowSelect.value = String(n);
+    syncSelection();            // refreshes the label
+    renderDigits();
+    if (announce) document.dispatchEvent(new CustomEvent("algotrade:digit-window-changed", { detail: { count: n } }));
+  }
+  el.windowSelect.value = String(digitWindow);
+  el.windowSelect.addEventListener("change", () => setWindow(Number(el.windowSelect.value), true));
+  document.addEventListener("algotrade:digit-window-changed", (e) => setWindow(e.detail.count, false));
+
+  // ==========================================================
+  // Market dropdowns (the settings one and the widget's one) — shared selection, same approach as the Sniper tab
   // ==========================================================
   function populateMarketSelect() {
     const synth = (AppState.allSymbols || []).filter(isSynthetic);
-    el.marketSelect.innerHTML = "";
-    const ph = document.createElement("option");
-    ph.value = ""; ph.textContent = "Choose a synthetic index…";
-    el.marketSelect.appendChild(ph);
-    synth.forEach((s) => {
-      const o = document.createElement("option");
-      o.value = s.symbol; o.textContent = s.displayName;
-      el.marketSelect.appendChild(o);
+    [el.marketSelect, el.widgetMarket].forEach((sel) => {
+      sel.innerHTML = "";
+      const ph = document.createElement("option");
+      ph.value = ""; ph.textContent = "Choose a synthetic index…";
+      sel.appendChild(ph);
+      synth.forEach((s) => {
+        const o = document.createElement("option");
+        o.value = s.symbol; o.textContent = s.displayName;
+        sel.appendChild(o);
+      });
     });
     syncSelection();
   }
@@ -90,40 +211,29 @@
     const meta = symbolMeta(AppState.selectedSymbol);
     const ok = isSynthetic(meta);
     el.marketSelect.value = ok ? meta.symbol : "";
+    el.widgetMarket.value = ok ? meta.symbol : "";
     el.marketLine.textContent = ok ? meta.displayName : "No synthetic index selected";
-    el.tMarket.textContent = ok ? meta.displayName : "—";
+    el.digitsNote.classList.toggle("hidden", ok);
+    el.digitsLabel.textContent = "Last digit distribution — last " + digitWindow.toLocaleString("en-US") + " ticks" + (ok ? " · " + meta.displayName : "");
+    if (ok && tabIsVisible() && historySymbol !== meta.symbol) loadHistoryFor(meta.symbol);
+    if (!ok) { history = []; historySymbol = null; renderDigits(); }
   }
-  el.marketSelect.addEventListener("change", () => {
-    const symbol = el.marketSelect.value;
+  function onMarketPicked(sel) {
+    const symbol = sel.value;
     if (!symbol || session) return;
     const meta = symbolMeta(symbol);
     if (typeof selectSymbol === "function") selectSymbol(symbol, meta ? meta.displayName : symbol);
-  });
+  }
+  el.marketSelect.addEventListener("change", () => onMarketPicked(el.marketSelect));
+  el.widgetMarket.addEventListener("change", () => onMarketPicked(el.widgetMarket));
   document.addEventListener("algotrade:symbol-selected", () => {
     if (!(AppState.allSymbols || []).length) return;
-    recent = []; paintDigits();
     if (el.marketSelect.options.length <= 1) populateMarketSelect(); else syncSelection();
   });
-
-  // ==========================================================
-  // Latest digits (display only — the engine reads the same tick feed itself)
-  // ==========================================================
-  document.addEventListener("algotrade:tick", (e) => {
-    const d = e.detail || {};
-    if (d.symbol !== AppState.selectedSymbol) return;
-    const meta = symbolMeta(d.symbol);
-    const dec = meta ? decimalPlacesFor(meta.pipSize) : 2;
-    const digit = Number(Number(d.quote).toFixed(dec).slice(-1));
-    recent.push(digit);
-    if (recent.length > 20) recent.shift();
-    if (tabIsVisible()) paintDigits();
+  // After a reconnect the tick feed resumes by itself (markets.js); reload the history to cover the gap.
+  document.addEventListener("algotrade:reconnected", () => {
+    if (historySymbol && tabIsVisible()) loadHistoryFor(historySymbol);
   });
-  function paintDigits() {
-    const last = recent.length ? recent[recent.length - 1] : null;
-    el.digitNow.textContent = last === null ? "–" : String(last);
-    el.digitNow.classList.toggle("skip", last === 4 || last === 5);
-    el.digits.innerHTML = recent.map((d) => '<span class="ph-dg' + (d === 4 || d === 5 ? " skip" : "") + '">' + d + "</span>").join("");
-  }
 
   // ==========================================================
   // Recovery stake preview ("Recovery stake calculation")
@@ -153,7 +263,7 @@
       currency: activeCurrency(), symbol: meta.symbol, pipDecimals: decimalPlacesFor(meta.pipSize),
       stake: num(el.stake), duration: num(el.duration), nEntry: num(el.nDigits), tp: num(el.tp), sl: num(el.sl),
       recoveryEnabled: !!el.recovery.checked, immediate: !!el.immediate.checked, fastRecovery: !!el.fast.checked, hardStop: !!el.hardStop.checked,
-      recConfirm: num(el.confirm), mult: num(el.mult), maxRec: num(el.maxRec), recDuration: num(el.recDur),
+      recPattern: num(el.pattern), recConfirm: num(el.confirm), mult: num(el.mult), maxRec: num(el.maxRec), recDuration: num(el.recDur),
       maxStake: num(el.maxStake), afterLimit: el.afterLimit.value,
     };
     let err = null;
@@ -161,6 +271,7 @@
     else if (!int(el.duration) || cfg.duration < 1 || cfg.duration > 10) err = "Ticks must be a whole number from 1 to 10.";
     else if (!int(el.nDigits) || cfg.nEntry < 1 || cfg.nEntry > 20) err = "Digits in a row must be a whole number from 1 to 20.";
     else if (!(cfg.tp > 0) || !(cfg.sl > 0)) err = "Take profit and stop loss must be above 0.";
+    else if (!int(el.pattern) || cfg.recPattern < 0 || cfg.recPattern > 20) err = "Losing digits in a row must be a whole number from 0 to 20 (0 = off).";
     else if (!int(el.confirm) || cfg.recConfirm < 1 || cfg.recConfirm > 20) err = "Confirm digits must be a whole number from 1 to 20.";
     else if (!(cfg.mult >= 1 && cfg.mult <= 10)) err = "Multiplier must be between 1 and 10.";
     else if (!int(el.maxRec) || cfg.maxRec < 1 || cfg.maxRec > 30) err = "Max recovery trades must be a whole number from 1 to 30.";
@@ -214,8 +325,8 @@
     el.run.disabled = on || !!otherRunning;
     el.run.title = otherRunning && !on ? "The " + otherRunning + " bot is running. Stop it first." : "";
     el.stop.disabled = !on;
-    SETTINGS.forEach((x) => { x.disabled = on || (x === el.marketSelect && !!otherRunning); });
-    el.marketSelect.title = on ? "Stop the running bot to change market" : "";
+    SETTINGS.forEach((x) => { x.disabled = on || ((x === el.marketSelect || x === el.widgetMarket) && !!otherRunning); });
+    el.marketSelect.title = el.widgetMarket.title = on ? "Stop the running bot to change market" : "";
   }
 
   // ==========================================================
@@ -226,6 +337,10 @@
     barEl.className = "ph-bar" + (state ? " " + state : "");
     barEl.firstElementChild.style.width = need > 0 ? Math.round((count / need) * 100) + "%" : "0%";
   }
+  // Digit ranges shown next to the recovery bars, so it is always clear what counts.
+  const isOverLeg = (label) => /^Over/.test(label || "");
+  const losingRange = (label) => (isOverLeg(label) ? "0–2" : "7–9");        // digits that LOSE Over 2 / Under 7
+  const winningRange = (label) => (isOverLeg(label) ? "3–9" : "0–6");       // digits that WIN Over 2 / Under 7
 
   function render(s) {
     // mode chip
@@ -233,63 +348,70 @@
     el.mode.textContent = s.reconnecting ? "Reconnecting…" : MODE_TEXT[s.mode] || "Stopped";
     el.mode.className = "sniper-chip" + (s.reconnecting ? " warn" : !stopped ? " running" : "");
 
-    // confirmation progress
+    // entry confirmation
     const waiting = s.mode === "waiting";
     el.entryTxt.textContent = waiting ? s.entryCount + " / " + s.entryNeed : "—";
     setBar(el.entryBar, waiting ? s.entryCount : 0, s.entryNeed, waiting ? "" : "idle");
-    if (s.recContract && s.recPhase === "confirm") {
-      el.recLabel.textContent = "Recovery confirmation (" + s.recContract + ")";
+
+    // recovery pattern (losing digits) -> recovery confirmation
+    const leg = s.recContract;
+    if (s.patNeed === 0) {
+      el.patLabel.textContent = "Recovery pattern (losing digits)";
+      el.patTxt.textContent = "Off";
+      setBar(el.patBar, 0, 1, "idle");
+    } else if (s.recPhase === "pattern") {
+      el.patLabel.textContent = "Recovery pattern — " + leg + " losing digits " + losingRange(leg);
+      el.patTxt.textContent = s.patCount + " / " + s.patNeed;
+      setBar(el.patBar, s.patCount, s.patNeed, "");
+    } else if (s.recPhase) {
+      el.patLabel.textContent = "Recovery pattern — " + leg + " losing digits " + losingRange(leg);
+      el.patTxt.textContent = "done";
+      setBar(el.patBar, 1, 1, "ready");
+    } else {
+      el.patLabel.textContent = "Recovery pattern (losing digits)";
+      el.patTxt.textContent = "—";
+      setBar(el.patBar, 0, 1, "idle");
+    }
+    if (s.recPhase === "confirm") {
+      el.recLabel.textContent = "Recovery confirmation — " + leg + " winning digits " + winningRange(leg);
       el.recTxt.textContent = s.recCount + " / " + s.recNeed;
       setBar(el.recBar, s.recCount, s.recNeed, "");
-    } else if (s.recContract) {
-      el.recLabel.textContent = "Recovery confirmation (" + s.recContract + ")";
+    } else if (s.recPhase === "open") {
+      el.recLabel.textContent = "Recovery confirmation — " + leg;
       el.recTxt.textContent = "trade open";
       setBar(el.recBar, 1, 1, "ready");
+    } else if (s.recPhase === "pattern") {
+      el.recLabel.textContent = "Recovery confirmation — " + leg + " winning digits " + winningRange(leg);
+      el.recTxt.textContent = "waiting for pattern";
+      setBar(el.recBar, 0, 1, "idle");
     } else {
       el.recLabel.textContent = "Recovery confirmation";
       el.recTxt.textContent = "—";
       setBar(el.recBar, 0, 1, "idle");
     }
 
-    // tiles
-    el.tStake.textContent = money(s.stake);
-    el.tNext.textContent = lastCfg && !lastCfg.recoveryEnabled ? "Off" : money(s.nextRecStake);
-    el.tLevel.textContent = String(s.level);
-    el.tRecContract.textContent = s.recContract || "—";
-    el.tRecAttempts.textContent = s.recContract ? s.recTrades + " / " + s.maxRec : "0 / " + s.maxRec;
-    el.tBought.textContent = String(s.bought);
-    el.tWins.textContent = String(s.wins);
-    el.tLosses.textContent = String(s.losses);
+    // boxes
     el.profit.textContent = signed(s.profit);
     el.profit.className = "sniper-big" + (s.profit > 0 ? " sniper-pos" : s.profit < 0 ? " sniper-neg" : "");
     el.profitSub.textContent = s.estimated ? "Includes a loss awaiting Deriv's confirmation" : "Confirmed Deriv results" + (s.open ? " · " + s.open + " open" : "");
     el.profitSub.className = "ph-sub" + (s.estimated ? " est" : "");
-
-    // stop loss / take profit status (combined net result, recovery included)
     const slHit = s.profit <= -s.sl, tpHit = s.profit >= s.tp;
-    el.tSl.textContent = slHit ? "Reached" : "OK";
-    el.tSl.className = "sniper-big sm " + (slHit ? "ph-reached" : "ph-ok");
-    el.tSlSub.textContent = slHit ? "−" + money(s.sl) + " hit" : money(s.sl + s.profit) + " left of " + money(s.sl);
-    el.tTp.textContent = tpHit ? "Reached" : "OK";
-    el.tTp.className = "sniper-big sm " + (tpHit ? "ph-ok" : "");
-    el.tTpSub.textContent = tpHit ? "+" + money(s.tp) + " hit" : money(s.tp - s.profit) + " to go of " + money(s.tp);
+    el.profitLimits.textContent = (slHit ? "Stop loss reached" : "SL " + money(s.sl + s.profit) + " left") + " · " + (tpHit ? "Take profit reached" : "TP " + money(s.tp - s.profit) + " to go");
+    el.tNext.textContent = lastCfg && !lastCfg.recoveryEnabled ? "Off" : money(s.nextRecStake);
+    el.cBought.textContent = String(s.bought);
+    el.cWins.textContent = String(s.wins);
+    el.cLosses.textContent = String(s.losses);
   }
 
   function resetDash(cfg) {
-    el.tMarket.textContent = (symbolMeta(cfg.symbol) || {}).displayName || cfg.symbol;
     el.histBody.innerHTML = ""; rowEls.clear(); el.histEmpty.classList.remove("hidden");
-    render({ mode: "waiting", reconnecting: false, entryCount: 0, entryNeed: cfg.nEntry, recCount: 0, recNeed: cfg.recConfirm, recPhase: null, recContract: null,
-      recTrades: 0, maxRec: cfg.maxRec, level: 0, stake: cfg.stake, nextRecStake: Math.round(cfg.stake * cfg.mult * 100) / 100,
+    render({ mode: "waiting", reconnecting: false, entryCount: 0, entryNeed: cfg.nEntry, patCount: 0, patNeed: cfg.recPattern,
+      recCount: 0, recNeed: cfg.recConfirm, recPhase: null, recContract: null, recTrades: 0, maxRec: cfg.maxRec,
+      level: 0, stake: cfg.stake, nextRecStake: Math.round(cfg.stake * cfg.mult * 100) / 100,
       bought: 0, wins: 0, losses: 0, open: 0, profit: 0, estimated: false, tp: cfg.tp, sl: cfg.sl });
   }
 
-  // ---------- session clock ----------
   const pad = (n) => String(n).padStart(2, "0");
-  function tickClock() {
-    if (startedAt === null) return;
-    const sec = Math.floor((Date.now() - startedAt) / 1000);
-    el.tTime.textContent = pad(Math.floor(sec / 3600)) + ":" + pad(Math.floor((sec % 3600) / 60)) + ":" + pad(sec % 60);
-  }
 
   // ==========================================================
   // Trade history
@@ -339,15 +461,13 @@
     clearMsg();
     lastCfg = cfg;
     resetDash(cfg);
-    startedAt = Date.now(); tickClock();
-    clearInterval(timer); timer = setInterval(tickClock, 1000);
     setRunningUI(true);
     announce(true);
     session = startHedgeEngine(deps, cfg, {
       log: log,
       state: render,
       trade: upsertRow,
-      finished: () => { session = null; clearInterval(timer); tickClock(); announce(false); setRunningUI(false); },
+      finished: () => { session = null; announce(false); setRunningUI(false); },
     });
   });
 
@@ -371,7 +491,7 @@
     if (e.detail.tab !== "pro-hedging") return;
     updateBanner();
     if ((AppState.allSymbols || []).length) populateMarketSelect();
-    paintDigits();
+    renderDigits();
     paintPreview();
   });
 
@@ -386,6 +506,7 @@
   if (accountScreen) layoutObserver.observe(accountScreen, { attributes: true, attributeFilter: ["class"] });
   syncLayoutClass();
 
+  buildCells();
+  renderDigits();
   paintPreview();
-  paintDigits();
 })();
