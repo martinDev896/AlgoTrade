@@ -12,7 +12,13 @@
 //             Over 3 wins, Under 6 loses -> recover ONLY Under 6, with Under 7.
 //             Under 6 wins, Over 3 loses -> recover ONLY Over 3, with Over 2.
 //             A winning contract is never recovered.
-//   RECOVERY  1. Wait for K qualifying digits in a row (Over 2: 3-9,
+//   RECOVERY  0. (optional, first recovery trade only) PATTERN: wait for P LOSING
+//                digits in a row - digits that lose the recovery contract
+//                (Over 2: 0-2, Under 7: 7-9). A digit that is not losing restarts
+//                the pattern count. If a LOSING digit then appears while the
+//                confirm digits are being counted, the bot goes back to the
+//                pattern and that digit counts as digit 1 of the pattern.
+//             1. Wait for K qualifying digits in a row (Over 2: 3-9,
 //                Under 7: 0-6; a non-qualifying digit resets the count).
 //             2. Buy the recovery contract at stake x multiplier.
 //             3. Win  -> recovery over, martingale reset.
@@ -55,6 +61,7 @@ function startHedgeEngine(deps, cfg, hooks) {
   const S = cfg.stake;
   const OVER = HEDGE_RULES.OVER, UNDER = HEDGE_RULES.UNDER;
   const SKIP = new Set(HEDGE_RULES.skipDigits);
+  const PAT = Math.max(0, Math.floor(cfg.recPattern || 0));   // losing digits in a row before the confirm digits (0 = off)
 
   // ---------- State ----------
   const st = { mode: "waiting", entryCount: 0, carry: 0, startedAt: Date.now() };
@@ -102,13 +109,14 @@ function startHedgeEngine(deps, cfg, hooks) {
     const t = totals();
     let curStake = S, nextRec = round2(S * Math.pow(cfg.mult, st.carry + 1));
     if (rec) {
-      if (rec.phase === "confirm") { curStake = recStake(rec); nextRec = curStake; }
+      if (rec.phase !== "open") { curStake = recStake(rec); nextRec = curStake; }
       else { curStake = rec.openStake || recStake(rec); nextRec = round2(S * Math.pow(cfg.mult, rec.level + 1)); }
     }
     return {
       mode: st.mode, running: running, reconnecting: reconnectNoticeOn,
       symbol: cfg.symbol, lastDigit: lastDigit,
       entryCount: st.mode === "waiting" ? Math.min(st.entryCount, cfg.nEntry) : 0, entryNeed: cfg.nEntry,
+      patCount: rec && rec.phase === "pattern" ? Math.min(rec.patCount, PAT) : 0, patNeed: PAT,
       recCount: rec && rec.phase === "confirm" ? Math.min(rec.count, cfg.recConfirm) : 0, recNeed: cfg.recConfirm,
       recPhase: rec ? rec.phase : null,
       recContract: rec ? rec.label : null,
@@ -312,7 +320,7 @@ function startHedgeEngine(deps, cfg, hooks) {
     if (!running || ended) return [];
     const out = [];
     if (rec) {
-      if (rec.phase === "confirm") out.push({ spec: recoverySpec(ruleOf(rec.side)), stake: recStake(rec) });
+      if (rec.phase !== "open") out.push({ spec: recoverySpec(ruleOf(rec.side)), stake: recStake(rec) });
       else if (rec.phase === "open" && cfg.immediate) {
         const nx = round2(S * Math.pow(cfg.mult, rec.level + 1));   // the stake used if this trade loses
         if (rec.trades < cfg.maxRec && nx <= cfg.maxStake) out.push({ spec: recoverySpec(ruleOf(rec.side)), stake: nx });
@@ -476,7 +484,7 @@ function startHedgeEngine(deps, cfg, hooks) {
   function newLeg(side) {
     const r = ruleOf(side);
     return { side: side, contract: r.contract, barrier: r.recBarrier, label: r.name + " " + r.recBarrier,
-      level: 0, trades: 0, phase: "confirm", count: 0, placing: false, openStake: 0, cycleWon: false };
+      level: 0, trades: 0, phase: PAT > 0 ? "pattern" : "confirm", patCount: 0, count: 0, placing: false, openStake: 0, cycleWon: false };
   }
   const qualifies = (leg, d) => !specLoses(recoverySpec(ruleOf(leg.side)), d);
 
@@ -486,10 +494,11 @@ function startHedgeEngine(deps, cfg, hooks) {
     if (recQueue.length) {
       rec = recQueue.shift();
       rec.level = st.carry + 1;      // the loss that created this leg counts as one martingale step
-      rec.phase = "confirm"; rec.count = 0; rec.placing = false;
+      rec.phase = PAT > 0 ? "pattern" : "confirm"; rec.patCount = 0; rec.count = 0; rec.placing = false;
       setMode("recovery");
       const first = recStake(rec);
-      log("Recovery for the losing contract: " + rec.label + " - waiting for " + cfg.recConfirm + " qualifying digit(s) in a row. First stake " + first.toFixed(2) + ".");
+      log("Recovery for the losing contract: " + rec.label + " - waiting for " +
+          (PAT > 0 ? PAT + " losing digit(s) in a row, then " : "") + cfg.recConfirm + " qualifying digit(s) in a row. First stake " + first.toFixed(2) + ".");
       if (first > cfg.maxStake + 1e-9) {    // no point waiting for digits when the first stake is not allowed
         endLeg(rec, "limit", "First recovery stake " + first.toFixed(2) + " is above the maximum permitted stake (" + cfg.maxStake.toFixed(2) + ").");
         return;
@@ -686,10 +695,32 @@ function startHedgeEngine(deps, cfg, hooks) {
     if (hooks.tickDigit) hooks.tickDigit(digit);
     if (running) {
       if (rec) {
-        if (rec.phase === "confirm" && !rec.placing) {
-          // Recovery confirmation: K qualifying digits in a row; any other digit starts the count again.
-          if (qualifies(rec, digit)) rec.count++; else rec.count = 0;
-          if (rec.count >= cfg.recConfirm) { rec.placing = true; runRecovery(rec); }
+        if (rec.phase === "pattern" && !rec.placing) {
+          // Pattern (first recovery trade only): P LOSING digits in a row - digits that lose the recovery contract.
+          // Any other digit starts the pattern count again. Once met, the confirm digits are checked from the NEXT digit.
+          if (!qualifies(rec, digit)) rec.patCount++; else rec.patCount = 0;
+          if (rec.patCount >= PAT) {
+            rec.phase = "confirm"; rec.count = 0;
+            log("Pattern complete: " + PAT + " losing digit(s) in a row - now waiting for " + cfg.recConfirm + " qualifying digit(s).");
+          }
+        } else if (rec.phase === "confirm" && !rec.placing) {
+          if (qualifies(rec, digit)) {
+            // Recovery confirmation: K qualifying digits in a row.
+            rec.count++;
+            if (rec.count >= cfg.recConfirm) { rec.placing = true; runRecovery(rec); }
+          } else {
+            rec.count = 0;
+            if (PAT > 0 && rec.trades === 0) {
+              // A LOSING digit during the confirm digits (first recovery trade): back to the pattern, and this digit
+              // is digit 1 of it.
+              rec.phase = "pattern"; rec.patCount = 1;
+              log("Losing digit " + digit + " during confirmation - back to the losing-digit count (this digit is 1 of " + PAT + ").");
+              if (rec.patCount >= PAT) {      // a pattern of 1 is already complete
+                rec.phase = "confirm"; rec.count = 0;
+                log("Pattern complete: " + PAT + " losing digit(s) in a row - now waiting for " + cfg.recConfirm + " qualifying digit(s).");
+              }
+            }
+          }
         }
       } else if (st.mode === "waiting" && !entryBusy && recQueue.length === 0) {
         // Entry confirmation: N digits in a row, none of them 4 or 5.
@@ -704,6 +735,7 @@ function startHedgeEngine(deps, cfg, hooks) {
   // quotes belonged to the old connection.
   offReconnect = deps.onReconnect ? deps.onReconnect(function () {
     st.entryCount = 0;
+    if (rec && rec.phase === "pattern") rec.patCount = 0;
     if (rec && rec.phase === "confirm") rec.count = 0;
     quotes.clear();
     setQuotes(lastWanted);
@@ -722,7 +754,7 @@ function startHedgeEngine(deps, cfg, hooks) {
   emitState();
   log("Started: after " + cfg.nEntry + " digit(s) in a row with no 4 or 5, buy Over 3 + Under 6 (stake " + S.toFixed(2) + ", " + cfg.duration + " tick(s)). " +
       (cfg.recoveryEnabled
-        ? "Recovery: Over 3 -> Over 2, Under 6 -> Under 7, after " + cfg.recConfirm + " qualifying digit(s); " + (cfg.immediate ? "immediate" : "confirmed") + " re-buys, max " + cfg.maxRec + " trades."
+        ? "Recovery: Over 3 -> Over 2, Under 6 -> Under 7, after " + (PAT > 0 ? PAT + " losing digit(s) then " : "") + cfg.recConfirm + " qualifying digit(s); " + (cfg.immediate ? "immediate" : "confirmed") + " re-buys, max " + cfg.maxRec + " trades."
         : "Recovery is off."));
 
   return {
@@ -733,7 +765,7 @@ function startHedgeEngine(deps, cfg, hooks) {
       running = false;
       recQueue.length = 0;
       setQuotes([]);
-      if (rec && rec.phase === "confirm") rec = null;
+      if (rec && (rec.phase === "confirm" || rec.phase === "pattern")) rec = null;
       log("Stop requested - no new trades. Waiting for any open contract to settle.");
       emitState();
       maybeEnd();
