@@ -20,6 +20,7 @@
 <link rel="stylesheet" href="css/sniper.css" />
 <link rel="stylesheet" href="css/mobile-manual.css" />
 <link rel="stylesheet" href="css/bot-builder.css" />
+<link rel="stylesheet" href="css/pro-hedging.css" />
 </head>
 <body>
 
@@ -47,6 +48,7 @@
     <button class="app-tab" data-tab="copy-trading">Copy Trading</button>
     <button class="app-tab" data-tab="bot-builder">Bot Builder</button>
     <button class="app-tab" data-tab="sniper-trader">Sniper Trader</button>
+    <button class="app-tab" data-tab="pro-hedging">Pro Hedging</button>
   </nav>
 
   <main>
@@ -426,6 +428,132 @@
         </div>
       </div>
 
+      <!-- ============ TAB: PRO HEDGING ============ -->
+      <div id="tab-pro-hedging" class="tab-panel hidden">
+        <div class="sniper-workspace">
+
+          <!-- ============ SETTINGS ============ -->
+          <div class="sniper-card" id="ph-card">
+            <div class="sniper-meta">
+              <span>Trading <b id="ph-market-line">—</b></span>
+              <span id="ph-banner" class="sniper-banner hidden"></span>
+            </div>
+            <p class="sniper-hint"><b>Strategy:</b> after the chosen number of digits in a row with <b>no 4 or 5</b>, buy <b>Over 3</b> and <b>Under 6</b> together. A losing side is recovered on its own, with a safer barrier (Over 3 → <b>Over 2</b>, Under 6 → <b>Under 7</b>). A winning side is never recovered.</p>
+
+            <div class="sniper-fieldrow">
+              <span class="sniper-rowtitle">Entry parameters</span>
+              <label class="fld" title="Digits contracts only work on synthetic indices"><span>Market</span>
+                <select id="ph-market-select" class="trade-select ph-select-market"></select></label>
+              <label class="fld" title="Stake for EACH of the two entry contracts"><span>Initial stake</span>
+                <input id="ph-stake" type="number" min="0.35" step="0.01" value="0.35" class="trade-input ch5" /></label>
+              <label class="fld" title="Contract length of the entry contracts, in ticks"><span>Ticks</span>
+                <input id="ph-duration" type="number" min="1" max="10" step="1" value="1" class="trade-input ch2" /></label>
+              <label class="fld" title="How many digits in a row must appear WITHOUT a 4 or a 5 before both contracts are bought"><span>Digits in a row (no 4/5)</span>
+                <input id="ph-ndigits" type="number" min="1" max="20" step="1" value="4" class="trade-input ch2" /></label>
+              <label class="fld" title="Stop when the combined net profit of all contracts, recovery included, reaches this"><span>Take profit</span>
+                <input id="ph-tp" type="number" min="0.01" step="0.01" value="10" class="trade-input ch5" /></label>
+              <label class="fld" title="Stop when the combined net loss of all contracts, recovery included, reaches this"><span>Stop loss</span>
+                <input id="ph-sl" type="number" min="0.01" step="0.01" value="20" class="trade-input ch5" /></label>
+            </div>
+
+            <div class="sniper-fieldrow">
+              <span class="sniper-rowtitle">Recovery parameters</span>
+              <label class="fld" title="Qualifying digits in a row needed before the FIRST recovery trade (Over 2: digits 3-9, Under 7: digits 0-6). Any other digit restarts the count."><span>Confirm digits</span>
+                <input id="ph-confirm" type="number" min="1" max="20" step="1" value="2" class="trade-input ch2" /></label>
+              <label class="fld" title="The recovery stake is multiplied by this after every loss"><span>Multiplier</span>
+                <input id="ph-mult" type="number" min="1" max="10" step="0.1" value="2" class="trade-input ch3" /></label>
+              <label class="fld" title="Most recovery trades in one recovery cycle"><span>Max recovery trades</span>
+                <input id="ph-maxrec" type="number" min="1" max="30" step="1" value="3" class="trade-input ch2" /></label>
+              <label class="fld" title="Contract length of the recovery contracts, in ticks"><span>Recovery ticks</span>
+                <input id="ph-recdur" type="number" min="1" max="10" step="1" value="1" class="trade-input ch2" /></label>
+              <label class="fld" title="No trade above this stake is ever placed"><span>Max stake</span>
+                <input id="ph-maxstake" type="number" min="0.35" step="0.01" value="50" class="trade-input ch5" /></label>
+              <label class="fld" title="What happens when a recovery cycle ends WITHOUT a win (max trades or max stake reached)"><span>When the limit is reached</span>
+                <select id="ph-afterlimit" class="trade-select ph-select-limit">
+                  <option value="keep">Keep martingale, back to entry</option>
+                  <option value="reset">Reset martingale, back to entry</option>
+                  <option value="stop">Stop the bot</option>
+                </select></label>
+            </div>
+            <p id="ph-preview" class="ph-preview"></p>
+
+            <div class="sniper-options">
+              <label for="ph-recovery" title="Off = a losing side is just recorded"><input id="ph-recovery" type="checkbox" checked /> Recovery</label>
+              <label for="ph-immediate" title="After a recovery loss, buy the same recovery contract again at once, without waiting for confirmation digits"><input id="ph-immediate" type="checkbox" checked /> Immediate recovery</label>
+              <label for="ph-fast" title="Send the next recovery buy as soon as the contract update shows a losing exit digit, a moment before Deriv's final result. That loss is marked 'estimated' until Deriv confirms it."><input id="ph-fast" type="checkbox" checked /> Fast recovery (buy on exit-digit read)</label>
+              <label for="ph-hardstop" title="Do not place a trade whose stake could take the total loss past the stop loss"><input id="ph-hardstop" type="checkbox" checked /> Never place a trade that could pass the stop loss</label>
+            </div>
+
+            <div class="sniper-actions">
+              <button id="ph-run" class="btn-buy btn-buy-green">▶ Run</button>
+              <button id="ph-stop" class="btn-buy btn-buy-red" disabled>■ Stop</button>
+            </div>
+            <div id="ph-msg" class="sniper-msg hidden"></div>
+          </div>
+
+          <!-- ============ DASHBOARD ============ -->
+          <div class="sniper-card">
+            <div class="ph-dash-head">
+              <span id="ph-mode" class="sniper-chip">Stopped</span>
+              <div id="ph-digit-now" class="ph-digit-now" title="Latest digit">–</div>
+              <div>
+                <div id="ph-digits" class="ph-digits" aria-label="Recent last digits"></div>
+                <span class="ph-dash-note">Last digits (gold = 4 or 5)</span>
+              </div>
+            </div>
+
+            <div class="ph-progress">
+              <div>
+                <div class="ph-prog-top"><span>Entry confirmation (no 4 / 5)</span><b id="ph-entry-txt">0 / 0</b></div>
+                <div id="ph-entry-bar" class="ph-bar idle"><i></i></div>
+              </div>
+              <div>
+                <div class="ph-prog-top"><span id="ph-rec-label">Recovery confirmation</span><b id="ph-rec-txt">—</b></div>
+                <div id="ph-rec-bar" class="ph-bar idle"><i></i></div>
+              </div>
+            </div>
+
+            <div class="ph-grid">
+              <div class="sniper-tile ph-tile-wide">
+                <span class="sniper-tile-label">Total profit / loss</span>
+                <b id="ph-profit" class="sniper-big">0.00</b>
+                <small id="ph-profit-sub" class="ph-sub">Real Deriv results</small>
+              </div>
+              <div class="sniper-tile"><span class="sniper-tile-label">Market</span><b id="ph-t-market" class="sniper-big sm">—</b></div>
+              <div class="sniper-tile"><span class="sniper-tile-label">Current stake</span><b id="ph-t-stake" class="sniper-big">—</b></div>
+              <div class="sniper-tile"><span class="sniper-tile-label">Next recovery stake</span><b id="ph-t-next" class="sniper-big">—</b></div>
+              <div class="sniper-tile"><span class="sniper-tile-label">Martingale level</span><b id="ph-t-level" class="sniper-big">0</b></div>
+              <div class="sniper-tile"><span class="sniper-tile-label">Recovery contract</span><b id="ph-t-reccontract" class="sniper-big sm">—</b></div>
+              <div class="sniper-tile"><span class="sniper-tile-label">Recovery attempts</span><b id="ph-t-recattempts" class="sniper-big">0 / 0</b></div>
+              <div class="sniper-tile"><span class="sniper-tile-label">Contracts bought</span><b id="ph-t-bought" class="sniper-big">0</b></div>
+              <div class="sniper-tile"><span class="sniper-tile-label">Won</span><b id="ph-t-wins" class="sniper-big sniper-pos">0</b></div>
+              <div class="sniper-tile"><span class="sniper-tile-label">Lost</span><b id="ph-t-losses" class="sniper-big sniper-neg">0</b></div>
+              <div class="sniper-tile"><span class="sniper-tile-label">Stop loss</span><b id="ph-t-sl" class="sniper-big sm">—</b><small id="ph-t-sl-sub" class="ph-sub"></small></div>
+              <div class="sniper-tile"><span class="sniper-tile-label">Take profit</span><b id="ph-t-tp" class="sniper-big sm">—</b><small id="ph-t-tp-sub" class="ph-sub"></small></div>
+              <div class="sniper-tile"><span class="sniper-tile-label">Session time</span><b id="ph-t-time" class="sniper-big">00:00:00</b></div>
+            </div>
+          </div>
+
+          <!-- ============ TRADE HISTORY ============ -->
+          <div class="sniper-card">
+            <div class="ph-hist-head">
+              <h3>Trade history</h3>
+              <span class="ph-hist-note">Every row is a real Deriv contract. “Estimated” = loss read from the exit digit, awaiting Deriv’s confirmed figure.</span>
+            </div>
+            <div class="ph-table-wrap">
+              <table class="ph-table">
+                <thead><tr>
+                  <th>#</th><th>Time</th><th>Stage</th><th>Contract</th><th class="r">Stake</th><th class="r">Recovery level</th><th>Result</th><th class="r">Profit / loss</th><th>Data</th>
+                </tr></thead>
+                <tbody id="ph-hist-body"></tbody>
+              </table>
+              <div id="ph-hist-empty" class="ph-empty">No trades yet. Press Run to start.</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
     </section>
 
     <!-- ============ STATE: ERROR ============ -->
@@ -455,5 +583,7 @@
   <script src="js/sniper-trader.js"></script>
   <script src="js/sniper-evenodd-engine.js"></script>
   <script src="js/sniper-evenodd.js"></script>
+  <script src="js/pro-hedging-engine.js"></script>
+  <script src="js/pro-hedging.js"></script>
 </body>
 </html>
