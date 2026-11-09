@@ -1,0 +1,107 @@
+/* ==========================================================
+   AlgoTrade — Pro Hedging tab
+   Reuses the Sniper Trader look (sniper.css): .sniper-workspace, .sniper-card,
+   .sniper-fieldrow, .fld, .sniper-options, .sniper-actions, .sniper-chip,
+   .sniper-tile, .sniper-msg, .trade-input, .trade-select, .btn-buy.
+   Only what the hedging dashboard needs on top of that lives here.
+   Load AFTER sniper.css.
+   ========================================================== */
+
+/* ---------- Layout safety while this tab is open ----------
+   Same rules as "Layout safety" in sniper.css, for #tab-pro-hedging.
+   body.hedge-active is switched on by pro-hedging.js only while the tab is visible:
+   the page may grow and scroll, and the footer sits below the content. */
+html:has(body.hedge-active) { height: auto !important; overflow-y: auto !important; }
+body.hedge-active { height: auto !important; min-height: 100vh; min-height: 100dvh; overflow: visible !important; }
+body.hedge-active main {
+  flex: 1 0 auto !important; height: auto !important; min-height: 0 !important;
+  max-height: none !important; overflow: visible !important; align-items: flex-start !important;
+}
+body.hedge-active .account-panel,
+body.hedge-active #tab-pro-hedging { height: auto !important; max-height: none !important; overflow: visible !important; }
+body.hedge-active footer {
+  position: static !important; flex-shrink: 0; transform: none !important;
+  padding-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* A few extra field widths for this tab */
+.fld .trade-input.ch4 { --ch: 4; }
+.fld .trade-select.ph-select-market { min-width: 11rem; }
+.fld .trade-select.ph-select-limit { min-width: 12.5rem; }
+
+/* Recovery stake preview line */
+.ph-preview { font-family: 'JetBrains Mono', monospace; font-size: 0.76rem; color: #6B7280; margin: 0.1rem 0 0.4rem; }
+.ph-preview b { color: #1A1D22; }
+.ph-preview .over { color: var(--fall); font-weight: 600; }
+
+/* ---------- Dashboard header: mode + latest digit + recent digits ---------- */
+.ph-dash-head { display: flex; align-items: center; flex-wrap: wrap; gap: 0.7rem 1.1rem; margin-bottom: 0.8rem; }
+.ph-digit-now {
+  display: flex; align-items: center; justify-content: center;
+  width: 3rem; height: 3rem; border-radius: 10px;
+  font-family: 'JetBrains Mono', monospace; font-size: 1.6rem; font-weight: 700;
+  background: #F1F3F5; color: #1A1D22; border: 1px solid #E4E7EB;
+}
+.ph-digit-now.skip { background: rgba(212, 169, 74, 0.18); border-color: var(--gold); color: #8A6A14; }
+.ph-digits { display: flex; gap: 0.2rem; flex-wrap: wrap; }
+.ph-dg {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.35rem; height: 1.35rem; border-radius: 5px;
+  font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; font-weight: 600;
+  background: #F1F3F5; color: #6B7280;
+}
+.ph-dg.skip { background: rgba(212, 169, 74, 0.2); color: #8A6A14; }
+.ph-dash-note { font-size: 0.7rem; color: #9AA3AF; }
+
+/* ---------- Confirmation progress bars ---------- */
+.ph-progress { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.6rem 1rem; margin-bottom: 0.8rem; }
+.ph-prog-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.72rem; color: #6B7280; margin-bottom: 0.25rem; }
+.ph-prog-top b { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #1A1D22; }
+.ph-bar { height: 8px; border-radius: 999px; background: #EEF0F3; overflow: hidden; }
+.ph-bar > i { display: block; height: 100%; width: 0; border-radius: 999px; background: var(--gold); transition: width 0.15s ease; }
+.ph-bar.ready > i { background: var(--rise); }
+.ph-bar.idle > i { background: #C9CED6; }
+
+/* ---------- Tile grid ---------- */
+.ph-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 0.5rem; }
+.ph-grid .sniper-tile { min-width: 0; }
+.ph-grid .sniper-big { font-size: 1.1rem; overflow-wrap: anywhere; }
+.ph-grid .sniper-big.sm { font-size: 0.95rem; }
+.ph-tile-wide { grid-column: span 2; }
+.ph-sub { font-family: 'JetBrains Mono', monospace; font-size: 0.66rem; color: #9AA3AF; min-height: 0.85rem; }
+.ph-sub.est { color: #8A6A14; }
+.sniper-big.ph-reached { color: var(--fall); }
+.sniper-big.ph-ok { color: var(--rise); }
+
+/* ---------- Trade history ---------- */
+.ph-hist-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+.ph-hist-head h3 { margin: 0; font-size: 1rem; }
+.ph-hist-note { font-size: 0.72rem; color: #9AA3AF; }
+.ph-table-wrap { overflow-x: auto; max-height: 420px; overflow-y: auto; border: 1px solid #E4E7EB; border-radius: 10px; }
+.ph-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; min-width: 640px; }
+.ph-table th {
+  position: sticky; top: 0; background: #F9FAFB; text-align: left;
+  font-size: 0.64rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #9AA3AF;
+  padding: 0.45rem 0.6rem; border-bottom: 1px solid #E4E7EB; white-space: nowrap;
+}
+.ph-table td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #F1F3F5; font-family: 'JetBrains Mono', monospace; white-space: nowrap; color: #1A1D22; }
+.ph-table td.txt { font-family: 'Inter', sans-serif; }
+.ph-table tr:last-child td { border-bottom: none; }
+.ph-table .r { text-align: right; }
+.ph-table .ph-won { color: var(--rise); font-weight: 600; }
+.ph-table .ph-lost { color: var(--fall); font-weight: 600; }
+.ph-table .ph-open { color: #6B7280; }
+.ph-tag { display: inline-block; font-family: 'Inter', sans-serif; font-size: 0.64rem; font-weight: 600; padding: 0.1rem 0.45rem; border-radius: 999px; background: #F1F3F5; color: #6B7280; }
+.ph-tag.conf { background: rgba(46, 204, 143, 0.14); color: var(--rise); }
+.ph-tag.est { background: rgba(212, 169, 74, 0.2); color: #8A6A14; }
+.ph-empty { padding: 1.2rem; text-align: center; font-size: 0.8rem; color: #9AA3AF; }
+
+/* ---------- Small screens ---------- */
+@media (max-width: 480px) {
+  .fld .trade-select.ph-select-market, .fld .trade-select.ph-select-limit { min-width: 0; width: 100%; }
+  .ph-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ph-tile-wide { grid-column: span 2; }
+  .ph-digit-now { width: 2.5rem; height: 2.5rem; font-size: 1.3rem; }
+  .ph-dg { width: 1.2rem; height: 1.2rem; font-size: 0.66rem; }
+  .ph-progress { grid-template-columns: 1fr; }
+}
