@@ -411,8 +411,6 @@
       bought: 0, wins: 0, losses: 0, open: 0, profit: 0, estimated: false, tp: cfg.tp, sl: cfg.sl });
   }
 
-  const pad = (n) => String(n).padStart(2, "0");
-
   // ==========================================================
   // Trade history
   // ==========================================================
@@ -423,20 +421,16 @@
     let tr = rowEls.get(r.id);
     const isNew = !tr;
     if (isNew) { tr = document.createElement("tr"); rowEls.set(r.id, tr); }
-    const t = new Date(r.time);
     const resCls = r.status === "won" ? "ph-won" : r.status === "lost" ? "ph-lost" : "ph-open";
     const resTxt = r.status === "won" ? "Won" : r.status === "lost" ? "Lost" : "Open";
-    const tag = r.status === "open" ? '<span class="ph-tag">Open</span>' : r.confirmed ? '<span class="ph-tag conf">Confirmed</span>' : '<span class="ph-tag est">Estimated</span>';
+    const est = r.status !== "open" && !r.confirmed;     // loss read from the exit digit, Deriv's figure still to come
     tr.innerHTML =
       "<td>" + r.id + "</td>" +
-      "<td>" + pad(t.getHours()) + ":" + pad(t.getMinutes()) + ":" + pad(t.getSeconds()) + "</td>" +
       '<td class="txt">' + r.phase + "</td>" +
       '<td class="txt">' + r.label + "</td>" +
       '<td class="r">' + money(r.stake) + "</td>" +
-      '<td class="r">' + (r.phase === "Recovery" ? r.level : "—") + "</td>" +
       '<td class="' + resCls + '">' + resTxt + "</td>" +
-      '<td class="r ' + resCls + '">' + (r.profit === null ? "—" : signed(r.profit)) + "</td>" +
-      "<td>" + tag + "</td>";
+      '<td class="r ' + resCls + '"' + (est ? ' title="Estimated - awaiting Deriv\'s confirmed figure"' : "") + ">" + (r.profit === null ? "—" : signed(r.profit) + (est ? "*" : "")) + "</td>";
     if (isNew) {
       el.histBody.insertBefore(tr, el.histBody.firstChild);     // newest first
       while (el.histBody.children.length > MAX_ROWS) { el.histBody.removeChild(el.histBody.lastChild); }
