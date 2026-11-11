@@ -72,37 +72,49 @@ body.hedge-active footer {
 .ph-stats .sniper-big { font-size: 1.15rem; overflow-wrap: anywhere; }
 .ph-sub { display: block; font-family: 'JetBrains Mono', monospace; font-size: 0.64rem; color: #9AA3AF; min-height: 0.8rem; }
 .ph-sub.est { color: #8A6A14; }
-.ph-counts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.3rem; margin-top: 0.15rem; }
+.ph-counts { display: flex; justify-content: space-between; gap: 0.4rem; margin-top: 0.15rem; }
 .ph-counts > div { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
-.ph-counts small { font-size: 0.56rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #9AA3AF; }
+.ph-counts small { font-size: 0.56rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #9AA3AF; white-space: nowrap; }
 .ph-counts b { font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; font-weight: 600; line-height: 1.25; color: #1A1D22; }
 .ph-counts b.sniper-pos { color: var(--rise); }
 .ph-counts b.sniper-neg { color: var(--fall); }
 
-/* ---------- Trade history ---------- */
+/* ---------- Never let this tab be wider than the screen ----------
+   Grid/flex children default to min-width:auto, so one wide child (the old history table) stretched the whole
+   workspace and made the page scroll sideways on phones. min-width:0 lets every card shrink to the screen. */
+#tab-pro-hedging { min-width: 0; max-width: 100%; }
+#tab-pro-hedging .sniper-workspace,
+#tab-pro-hedging .sniper-workspace > .sniper-card { min-width: 0; max-width: 100%; }
+/* only long free text may break mid-word; labels and headings never do */
+#tab-pro-hedging .sniper-msg, #tab-pro-hedging .ph-preview, #tab-pro-hedging .ph-hist-note, #tab-pro-hedging .ph-sub { overflow-wrap: anywhere; }
+
+/* ---------- Trade history (6 columns: #, Stage, Contract, Stake, Result, Profit/loss) ---------- */
 .ph-hist-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
 .ph-hist-head h3 { margin: 0; font-size: 1rem; }
 .ph-hist-note { font-size: 0.72rem; color: #9AA3AF; }
-.ph-table-wrap { overflow-x: auto; max-height: 420px; overflow-y: auto; border: 1px solid #E4E7EB; border-radius: 10px; }
-.ph-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; min-width: 640px; }
+.ph-table-wrap { max-height: 420px; overflow-y: auto; overflow-x: hidden; border: 1px solid #E4E7EB; border-radius: 10px; }
+.ph-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.78rem; }
+.ph-table .c-id { width: 9%; }
+.ph-table .c-stage { width: 18%; }
+.ph-table .c-contract { width: 21%; }
+.ph-table .c-stake { width: 15%; }
+.ph-table .c-result { width: 14%; }
+.ph-table .c-pl { width: 23%; }
 .ph-table th {
-  position: sticky; top: 0; background: #F9FAFB; text-align: left;
+  position: sticky; top: 0; background: #F9FAFB; text-align: left; overflow-wrap: normal; word-break: normal;
   font-size: 0.64rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #9AA3AF;
-  padding: 0.45rem 0.6rem; border-bottom: 1px solid #E4E7EB; white-space: nowrap;
+  padding: 0.45rem 0.6rem; border-bottom: 1px solid #E4E7EB;
 }
-.ph-table td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #F1F3F5; font-family: 'JetBrains Mono', monospace; white-space: nowrap; color: #1A1D22; }
+.ph-table td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #F1F3F5; font-family: 'JetBrains Mono', monospace; color: #1A1D22; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ph-table td.txt { font-family: 'Inter', sans-serif; }
 .ph-table tr:last-child td { border-bottom: none; }
 .ph-table .r { text-align: right; }
 .ph-table .ph-won { color: var(--rise); font-weight: 600; }
 .ph-table .ph-lost { color: var(--fall); font-weight: 600; }
 .ph-table .ph-open { color: #6B7280; }
-.ph-tag { display: inline-block; font-family: 'Inter', sans-serif; font-size: 0.64rem; font-weight: 600; padding: 0.1rem 0.45rem; border-radius: 999px; background: #F1F3F5; color: #6B7280; }
-.ph-tag.conf { background: rgba(46, 204, 143, 0.14); color: var(--rise); }
-.ph-tag.est { background: rgba(212, 169, 74, 0.2); color: #8A6A14; }
 .ph-empty { padding: 1.2rem; text-align: center; font-size: 0.8rem; color: #9AA3AF; }
 
-/* ---------- Small screens ---------- */
+/* ---------- Small screens: everything shrinks to fit, content stacks, the page only scrolls DOWN ---------- */
 @media (max-width: 480px) {
   .fld .trade-select.ph-select-market, .fld .trade-select.ph-select-limit { min-width: 0; width: 100%; }
   .ph-stats { grid-template-columns: 1fr 1fr; }
@@ -110,7 +122,36 @@ body.hedge-active footer {
   .ph-counts b { font-size: 0.88rem; }
   .ph-counts small { font-size: 0.52rem; }
   .ph-digit-now { width: 2.5rem; height: 2.5rem; font-size: 1.3rem; }
-  .ph-dg { width: 1.2rem; height: 1.2rem; font-size: 0.66rem; }
+  .ph-dg { width: 1.1rem; height: 1.1rem; font-size: 0.62rem; }
+  .ph-digits { gap: 0.15rem; }
   .ph-progress { grid-template-columns: 1fr; }
+  .ph-prog-top { font-size: 0.66rem; }
   .ph-widget { padding: 0.6rem 0 0.7rem; }
+  .ph-widget .digits-label { font-size: 0.62rem; }
+  .ph-hist-note { font-size: 0.64rem; }
+  /* history table: smaller type, tighter cells, no sideways scroll */
+  .ph-table { font-size: 0.66rem; }
+  .ph-table .c-id { width: 8%; }
+  .ph-table .c-stage { width: 19%; }
+  .ph-table .c-contract { width: 20%; }
+  .ph-table .c-stake { width: 14%; }
+  .ph-table .c-result { width: 15%; }
+  .ph-table .c-pl { width: 24%; }
+  .ph-table th { font-size: 0.54rem; letter-spacing: 0.02em; padding: 0.35rem 0.3rem; }
+  .ph-table td { padding: 0.32rem 0.3rem; }
+}
+/* very small phones (320-360px): shrink the digit circles a little more */
+@media (max-width: 360px) {
+  .ph-widget .digits-row { gap: 0.1rem; row-gap: 0.6rem; }
+  .ph-widget .digit-ring { width: 30px; height: 30px; }
+  .ph-widget .digit-pct { font-size: 0.52rem; }
+  .ph-table { font-size: 0.6rem; }
+  .ph-table .c-id { width: 8%; }
+  .ph-table .c-stage { width: 23%; }
+  .ph-table .c-contract { width: 21%; }
+  .ph-table .c-stake { width: 13%; }
+  .ph-table .c-result { width: 14%; }
+  .ph-table .c-pl { width: 21%; }
+  .ph-table th { font-size: 0.5rem; letter-spacing: 0; padding: 0.3rem 0.12rem 0.3rem 0.2rem; }
+  .ph-table td { padding: 0.3rem 0.2rem; }
 }
