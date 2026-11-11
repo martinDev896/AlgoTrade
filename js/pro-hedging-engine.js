@@ -12,12 +12,14 @@
 //             Over 3 wins, Under 6 loses -> recover ONLY Under 6, with Under 7.
 //             Under 6 wins, Over 3 loses -> recover ONLY Over 3, with Over 2.
 //             A winning contract is never recovered.
-//   RECOVERY  0. (optional, first recovery trade only) PATTERN: wait for P LOSING
-//                digits in a row - digits that lose the recovery contract
-//                (Over 2: 0-2, Under 7: 7-9). A digit that is not losing restarts
-//                the pattern count. If a LOSING digit then appears while the
-//                confirm digits are being counted, the bot goes back to the
-//                pattern and that digit counts as digit 1 of the pattern.
+//   RECOVERY  0. (optional, first recovery trade only) PATTERN: wait for AT LEAST P
+//                LOSING digits in a row - digits that lose the recovery contract
+//                (Over 2: 0-2, Under 7: 7-9). More than P in a row is fine (the run
+//                just carries on); a digit that is not losing before P is reached
+//                restarts the count. The confirm digits are then counted from the
+//                first qualifying digit after the run, and that digit is confirm
+//                digit 1. If a LOSING digit appears after at least one confirm
+//                digit, the losing-digit count starts again and that digit is 1.
 //             1. Wait for K qualifying digits in a row (Over 2: 3-9,
 //                Under 7: 0-6; a non-qualifying digit resets the count).
 //             2. Buy the recovery contract at stake x multiplier.
@@ -705,21 +707,25 @@ function startHedgeEngine(deps, cfg, hooks) {
           }
         } else if (rec.phase === "confirm" && !rec.placing) {
           if (qualifies(rec, digit)) {
-            // Recovery confirmation: K qualifying digits in a row.
+            // Recovery confirmation: K qualifying digits in a row (the first one after the losing run is digit 1).
             rec.count++;
             if (rec.count >= cfg.recConfirm) { rec.placing = true; runRecovery(rec); }
-          } else {
-            rec.count = 0;
-            if (PAT > 0 && rec.trades === 0) {
-              // A LOSING digit during the confirm digits (first recovery trade): back to the pattern, and this digit
-              // is digit 1 of it.
-              rec.phase = "pattern"; rec.patCount = 1;
+          } else if (PAT > 0 && rec.trades === 0) {
+            // A LOSING digit (first recovery trade, pattern on).
+            if (rec.count === 0) {
+              // No confirm digit yet: it is simply the losing run carrying on (the pattern is "at least P"), so nothing restarts.
+              rec.patCount++;
+            } else {
+              // A confirm digit had already appeared: the losing-digit count starts again, and this digit is digit 1.
+              rec.phase = "pattern"; rec.patCount = 1; rec.count = 0;
               log("Losing digit " + digit + " during confirmation - back to the losing-digit count (this digit is 1 of " + PAT + ").");
               if (rec.patCount >= PAT) {      // a pattern of 1 is already complete
-                rec.phase = "confirm"; rec.count = 0;
+                rec.phase = "confirm";
                 log("Pattern complete: " + PAT + " losing digit(s) in a row - now waiting for " + cfg.recConfirm + " qualifying digit(s).");
               }
             }
+          } else {
+            rec.count = 0;                    // pattern off / not the first trade: just restart the confirm count
           }
         }
       } else if (st.mode === "waiting" && !entryBusy && recQueue.length === 0) {
