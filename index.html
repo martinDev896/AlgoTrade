@@ -458,9 +458,9 @@
 
             <div class="sniper-fieldrow">
               <span class="sniper-rowtitle">Recovery parameters</span>
-              <label class="fld" title="First recovery trade only. After a contract loses, wait for this many LOSING digits in a row (digits that lose the recovery contract: Over 2 = 0-2, Under 7 = 7-9) BEFORE the confirm digits are checked. Any other digit restarts this count. If a losing digit appears later, while the confirm digits are being counted, the bot comes back to this count and that digit counts as digit 1. 0 = off."><span>Losing digits in a row</span>
+              <label class="fld" title="First recovery trade only. After a contract loses, wait for this many LOSING digits in a row (digits that lose the recovery contract: Over 2 = 0-2, Under 7 = 7-9) BEFORE the confirm digits are checked. At LEAST this many in a row are needed (more is fine). A digit that is not losing, before this many have appeared, restarts the count. If a losing digit appears after a confirm digit, the count starts again and that digit counts as 1. 0 = off."><span>Losing digits in a row</span>
                 <input id="ph-pattern" type="number" min="0" max="20" step="1" value="0" class="trade-input ch2" /></label>
-              <label class="fld" title="After the losing digits above (if used), this many qualifying digits in a row are needed before the FIRST recovery trade (Over 2: digits 3-9, Under 7: digits 0-6). Any other digit restarts the count; if that digit is a LOSING digit and the losing-digit count is on, the bot goes back to the losing-digit count (first recovery trade only)."><span>Confirm digits</span>
+              <label class="fld" title="After the losing digits above (if used), this many qualifying digits in a row are needed before the FIRST recovery trade (Over 2: digits 3-9, Under 7: digits 0-6). Counting starts at the first qualifying digit after the losing digits (that digit is 1). Any other digit restarts the count; with the losing-digit count on, that sends the bot back to the losing-digit count (first recovery trade only)."><span>Confirm digits</span>
                 <input id="ph-confirm" type="number" min="1" max="20" step="1" value="2" class="trade-input ch2" /></label>
               <label class="fld" title="The recovery stake is multiplied by this after every loss"><span>Multiplier</span>
                 <input id="ph-mult" type="number" min="1" max="10" step="0.1" value="2" class="trade-input ch3" /></label>
@@ -560,12 +560,12 @@
           <div class="sniper-card">
             <div class="ph-hist-head">
               <h3>Trade history</h3>
-              <span class="ph-hist-note">Every row is a real Deriv contract. “Estimated” = loss read from the exit digit, awaiting Deriv’s confirmed figure.</span>
+              <span class="ph-hist-note">Every row is a real Deriv contract. <b>*</b> = loss read from the exit digit, awaiting Deriv’s confirmed figure.</span>
             </div>
             <div class="ph-table-wrap">
               <table class="ph-table">
                 <thead><tr>
-                  <th>#</th><th>Time</th><th>Stage</th><th>Contract</th><th class="r">Stake</th><th class="r">Recovery level</th><th>Result</th><th class="r">Profit / loss</th><th>Data</th>
+                  <th class="c-id">#</th><th class="c-stage">Stage</th><th class="c-contract">Contract</th><th class="c-stake r">Stake</th><th class="c-result">Result</th><th class="c-pl r">Profit / loss</th>
                 </tr></thead>
                 <tbody id="ph-hist-body"></tbody>
               </table>
