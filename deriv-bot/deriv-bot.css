@@ -1,0 +1,713 @@
+.theme--dark .blocklyDropDownDiv {
+  background-color: rgb(194, 194, 194) !important;
+  border-color: rgb(194, 194, 194) !important;
+}
+.theme--dark .zelos-renderer.zelos_renderer-theme .blocklyMainBackground,
+.theme--dark .load-strategy__container .blocklyMainBackground,
+.theme--dark .zelos-renderer.zelos_renderer-theme rect.blocklyFieldRect.blocklyDropdownRect,
+.theme--dark .zelos-renderer.zelos_renderer-theme .blocklyNonEditableText > rect:not(.blocklyDropdownRect),
+.theme--dark .zelos-renderer.zelos_renderer-theme .blocklyEditableText > rect:not(.blocklyDropdownRect),
+.theme--dark .blocklyPath[fill="#fff"],
+.theme--dark .blocklyVariableGet .blocklyPath,
+.theme--dark .blocklyOutlinePath {
+  fill: #0e0e0e !important;
+}
+.theme--dark .flyout rect.blocklyFieldRect.blocklyDropdownRect,
+.theme--dark .flyout .zelos-renderer.classic-theme .blocklyMainBackground {
+  fill: #151816 !important;
+}
+.theme--dark .zelos-renderer.zelos_renderer-theme .blocklyEditableText > image,
+.theme--dark .zelos-renderer.zelos_renderer-theme .blocklyNonEditableText > image {
+  filter: unset;
+}
+.theme--dark .flyout .zelos-renderer.classic-theme .blocklyEditableText > image {
+  filter: invert(0);
+}
+.theme--dark .zelos-renderer.classic-theme .blocklyNonEditableText > rect:not(.blocklyDropdownRect),
+.theme--dark .zelos-renderer.classic-theme .blocklyEditableText > rect:not(.blocklyDropdownRect) {
+  fill: unset;
+}
+
+.flyout .injectionDiv {
+  height: 100%;
+}
+
+.flyout .zelos-renderer.classic-theme .blocklyMainBackground {
+  filter: unset;
+}
+
+@keyframes blink-effect {
+  0% {
+    stroke: #f00;
+    stroke-width: 5px;
+  }
+  50% {
+    stroke: #ff0;
+    stroke-width: 8px;
+  }
+  100% {
+    stroke: #f00;
+    stroke-width: 5px;
+  }
+}
+.zelos-renderer.zelos_renderer-theme .block--error-highlighted > .blocklyPath,
+.flyout .zelos-renderer.classic-theme .block--error-highlighted > .blocklyPath,
+.gtm-search-results .block--error-highlighted > .blocklyPath,
+.load-strategy__container .block--error-highlighted > .blocklyPath {
+  stroke: #f00;
+  stroke-width: 5px;
+}
+@keyframes fade-in-out {
+  0% {
+    stroke-opacity: 0;
+  }
+  50% {
+    stroke-opacity: 1;
+    stroke-width: 6px;
+  }
+  100% {
+    stroke-opacity: 0;
+  }
+}
+.zelos-renderer.zelos_renderer-theme .block--execution-highlighted > .blocklyPath,
+.flyout .zelos-renderer.classic-theme .block--execution-highlighted > .blocklyPath,
+.gtm-search-results .block--execution-highlighted > .blocklyPath,
+.load-strategy__container .block--execution-highlighted > .blocklyPath {
+  stroke: #89b2af;
+  animation: fade-in-out 1.5s;
+}
+.zelos-renderer.zelos_renderer-theme .block--blink > .blocklyPath,
+.flyout .zelos-renderer.classic-theme .block--blink > .blocklyPath,
+.gtm-search-results .block--blink > .blocklyPath,
+.load-strategy__container .block--blink > .blocklyPath {
+  animation: blink-effect 1s infinite;
+}
+.zelos-renderer.zelos_renderer-theme .blocklySvg,
+.flyout .zelos-renderer.classic-theme .blocklySvg,
+.gtm-search-results .blocklySvg,
+.load-strategy__container .blocklySvg {
+  outline: none;
+  overflow: hidden; /* IE overflows by default. */
+  position: absolute;
+  display: block;
+}
+.zelos-renderer.zelos_renderer-theme,
+.flyout .zelos-renderer.classic-theme,
+.gtm-search-results,
+.load-strategy__container {
+  /* Necessary to position the drag surface */
+}
+.zelos-renderer.zelos_renderer-theme .blocklyRelativeWrapper,
+.flyout .zelos-renderer.classic-theme .blocklyRelativeWrapper,
+.gtm-search-results .blocklyRelativeWrapper,
+.load-strategy__container .blocklyRelativeWrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyWidgetDiv,
+.flyout .zelos-renderer.classic-theme .blocklyWidgetDiv,
+.gtm-search-results .blocklyWidgetDiv,
+.load-strategy__container .blocklyWidgetDiv {
+  display: none;
+  position: absolute;
+  z-index: 99999; /* big value for bootstrap3 compatibility */
+}
+.zelos-renderer.zelos_renderer-theme .blocklyNonSelectable,
+.flyout .zelos-renderer.classic-theme .blocklyNonSelectable,
+.gtm-search-results .blocklyNonSelectable,
+.load-strategy__container .blocklyNonSelectable {
+  user-select: none;
+  user-select: none;
+  user-select: none;
+  user-select: none;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyWidgetDiv.fieldTextInput,
+.flyout .zelos-renderer.classic-theme .blocklyWidgetDiv.fieldTextInput,
+.gtm-search-results .blocklyWidgetDiv.fieldTextInput,
+.load-strategy__container .blocklyWidgetDiv.fieldTextInput {
+  overflow: hidden;
+  border: 1px solid;
+  box-sizing: border-box;
+  transform-origin: 0 0;
+  transform-origin: 0 0;
+  transform-origin: 0 0;
+  transform-origin: 0 0;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyWidgetDiv.fieldTextInput.removableTextInput,
+.flyout .zelos-renderer.classic-theme .blocklyWidgetDiv.fieldTextInput.removableTextInput,
+.gtm-search-results .blocklyWidgetDiv.fieldTextInput.removableTextInput,
+.load-strategy__container .blocklyWidgetDiv.fieldTextInput.removableTextInput {
+  overflow: visible;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyTextDropDownArrow,
+.flyout .zelos-renderer.classic-theme .blocklyTextDropDownArrow,
+.gtm-search-results .blocklyTextDropDownArrow,
+.load-strategy__container .blocklyTextDropDownArrow {
+  position: absolute;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyTextRemoveIcon,
+.flyout .zelos-renderer.classic-theme .blocklyTextRemoveIcon,
+.gtm-search-results .blocklyTextRemoveIcon,
+.load-strategy__container .blocklyTextRemoveIcon {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  top: -40px;
+  left: 50%;
+  margin-left: -12px;
+  cursor: pointer;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyWsDragSurface,
+.flyout .zelos-renderer.classic-theme .blocklyWsDragSurface,
+.gtm-search-results .blocklyWsDragSurface,
+.load-strategy__container .blocklyWsDragSurface {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.zelos-renderer.zelos_renderer-theme,
+.flyout .zelos-renderer.classic-theme,
+.gtm-search-results,
+.load-strategy__container {
+  /* Added as a separate rule with multiple classes to make it more specific
+     than a bootstrap rule that selects svg:root. See issue #1275 for context.
+  */
+}
+.zelos-renderer.zelos_renderer-theme .blocklyWsDragSurface.blocklyOverflowVisible,
+.flyout .zelos-renderer.classic-theme .blocklyWsDragSurface.blocklyOverflowVisible,
+.gtm-search-results .blocklyWsDragSurface.blocklyOverflowVisible,
+.load-strategy__container .blocklyWsDragSurface.blocklyOverflowVisible {
+  overflow: visible;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyTooltipDiv,
+.flyout .zelos-renderer.classic-theme .blocklyTooltipDiv,
+.gtm-search-results .blocklyTooltipDiv,
+.load-strategy__container .blocklyTooltipDiv {
+  min-height: 34px;
+  background-color: #d6dadb;
+  border-radius: 4px;
+  color: #333;
+  padding: 8px;
+  font-size: 12px;
+  font-family: "IBM Plex Sans", sans-serif;
+  line-height: 1.5;
+  letter-spacing: normal;
+  position: absolute;
+  z-index: 100000; /* big value for bootstrap3 compatibility */
+}
+.zelos-renderer.zelos_renderer-theme .blocklyDropDownDiv,
+.flyout .zelos-renderer.classic-theme .blocklyDropDownDiv,
+.gtm-search-results .blocklyDropDownDiv,
+.load-strategy__container .blocklyDropDownDiv {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  display: none;
+  border: 1px solid;
+  border-radius: 4px;
+  box-shadow: 0 0 8px 1px rgba(0, 0, 0, 0.3);
+  padding: 4px;
+  user-select: none;
+  min-height: 15px;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyDropDownContent,
+.flyout .zelos-renderer.classic-theme .blocklyDropDownContent,
+.gtm-search-results .blocklyDropDownContent,
+.load-strategy__container .blocklyDropDownContent {
+  max-height: 300px;
+  overflow: auto;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyDropDownArrow,
+.flyout .zelos-renderer.classic-theme .blocklyDropDownArrow,
+.gtm-search-results .blocklyDropDownArrow,
+.load-strategy__container .blocklyDropDownArrow {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 16px;
+  height: 16px;
+  z-index: -1;
+  background-color: inherit;
+  border-color: inherit;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyDropDownButton,
+.flyout .zelos-renderer.classic-theme .blocklyDropDownButton,
+.gtm-search-results .blocklyDropDownButton,
+.load-strategy__container .blocklyDropDownButton {
+  display: inline-block;
+  float: left;
+  padding: 0;
+  margin: 4px;
+  border-radius: 4px;
+  outline: none;
+  border: 1px solid;
+  transition: box-shadow 0.1s;
+  cursor: pointer;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyDropDownButtonHover,
+.flyout .zelos-renderer.classic-theme .blocklyDropDownButtonHover,
+.gtm-search-results .blocklyDropDownButtonHover,
+.load-strategy__container .blocklyDropDownButtonHover {
+  box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.1);
+}
+.zelos-renderer.zelos_renderer-theme .blocklyDropDownButton:active,
+.flyout .zelos-renderer.classic-theme .blocklyDropDownButton:active,
+.gtm-search-results .blocklyDropDownButton:active,
+.load-strategy__container .blocklyDropDownButton:active {
+  box-shadow: 0 0 0 6px rgba(0, 0, 0, 0.1);
+}
+.zelos-renderer.zelos_renderer-theme .blocklyDropDownButton > img,
+.flyout .zelos-renderer.classic-theme .blocklyDropDownButton > img,
+.gtm-search-results .blocklyDropDownButton > img,
+.load-strategy__container .blocklyDropDownButton > img {
+  width: 80%;
+  height: 80%;
+  margin-top: 5%;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyDropDownPlaceholder,
+.flyout .zelos-renderer.classic-theme .blocklyDropDownPlaceholder,
+.gtm-search-results .blocklyDropDownPlaceholder,
+.load-strategy__container .blocklyDropDownPlaceholder {
+  display: inline-block;
+  float: left;
+  padding: 0;
+  margin: 4px;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyNumPadButton,
+.flyout .zelos-renderer.classic-theme .blocklyNumPadButton,
+.gtm-search-results .blocklyNumPadButton,
+.load-strategy__container .blocklyNumPadButton {
+  display: inline-block;
+  float: left;
+  padding: 0;
+  width: 48px;
+  height: 48px;
+  margin: 4px;
+  border-radius: 4px;
+  background: #0e0e0e;
+  color: #333;
+  outline: none;
+  border: 1px solid #0e0e0e;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 12px;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+}
+.zelos-renderer.zelos_renderer-theme .blocklyNumPadButton > img,
+.flyout .zelos-renderer.classic-theme .blocklyNumPadButton > img,
+.gtm-search-results .blocklyNumPadButton > img,
+.load-strategy__container .blocklyNumPadButton > img {
+  margin-top: 10%;
+  width: 80%;
+  height: 80%;
+  filter: invert(1);
+}
+.zelos-renderer.zelos_renderer-theme .blocklyNumPadButton:active,
+.flyout .zelos-renderer.classic-theme .blocklyNumPadButton:active,
+.gtm-search-results .blocklyNumPadButton:active,
+.load-strategy__container .blocklyNumPadButton:active {
+  background: #0e0e0e;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+}
+.zelos-renderer.zelos_renderer-theme .arrowTop,
+.flyout .zelos-renderer.classic-theme .arrowTop,
+.gtm-search-results .arrowTop,
+.load-strategy__container .arrowTop {
+  border-top: 1px solid;
+  border-left: 1px solid;
+  border-top-left-radius: 4px;
+  border-color: inherit;
+}
+.zelos-renderer.zelos_renderer-theme .arrowBottom,
+.flyout .zelos-renderer.classic-theme .arrowBottom,
+.gtm-search-results .arrowBottom,
+.load-strategy__container .arrowBottom {
+  border-bottom: 1px solid;
+  border-right: 1px solid;
+  border-bottom-right-radius: 4px;
+  border-color: inherit;
+}
+.zelos-renderer.zelos_renderer-theme .valueReportBox,
+.flyout .zelos-renderer.classic-theme .valueReportBox,
+.gtm-search-results .valueReportBox,
+.load-strategy__container .valueReportBox {
+  min-width: 50px;
+  max-width: 300px;
+  max-height: 200px;
+  overflow: auto;
+  word-wrap: break-word;
+  text-align: center;
+  font-size: 0.8em;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyResizeSE,
+.flyout .zelos-renderer.classic-theme .blocklyResizeSE,
+.gtm-search-results .blocklyResizeSE,
+.load-strategy__container .blocklyResizeSE {
+  cursor: se-resize;
+  fill: #aaa;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyResizeSW,
+.flyout .zelos-renderer.classic-theme .blocklyResizeSW,
+.gtm-search-results .blocklyResizeSW,
+.load-strategy__container .blocklyResizeSW {
+  cursor: sw-resize;
+  fill: #aaa;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyResizeLine,
+.flyout .zelos-renderer.classic-theme .blocklyResizeLine,
+.gtm-search-results .blocklyResizeLine,
+.load-strategy__container .blocklyResizeLine {
+  stroke: #888;
+  stroke-width: 1;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyHighlightedConnectionPath,
+.flyout .zelos-renderer.classic-theme .blocklyHighlightedConnectionPath,
+.gtm-search-results .blocklyHighlightedConnectionPath,
+.load-strategy__container .blocklyHighlightedConnectionPath {
+  fill: none;
+  stroke: #fc3;
+  stroke-width: 4px;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyPath,
+.flyout .zelos-renderer.classic-theme .blocklyPath,
+.gtm-search-results .blocklyPath,
+.load-strategy__container .blocklyPath {
+  stroke-width: 0.4px;
+}
+.zelos-renderer.zelos_renderer-theme .blocklySelected > .blocklyPath,
+.flyout .zelos-renderer.classic-theme .blocklySelected > .blocklyPath,
+.gtm-search-results .blocklySelected > .blocklyPath,
+.load-strategy__container .blocklySelected > .blocklyPath {
+  stroke: #ffc358;
+  stroke-width: 3px;
+}
+.zelos-renderer.zelos_renderer-theme .blocklySelected > .blocklyPathLight,
+.flyout .zelos-renderer.classic-theme .blocklySelected > .blocklyPathLight,
+.gtm-search-results .blocklySelected > .blocklyPathLight,
+.load-strategy__container .blocklySelected > .blocklyPathLight {
+  display: none;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyDraggable,
+.flyout .zelos-renderer.classic-theme .blocklyDraggable,
+.gtm-search-results .blocklyDraggable,
+.load-strategy__container .blocklyDraggable {
+  cursor: grab;
+  cursor: grab;
+  cursor: grab;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyDraggable image[alt=Collapsed],
+.flyout .zelos-renderer.classic-theme .blocklyDraggable image[alt=Collapsed],
+.gtm-search-results .blocklyDraggable image[alt=Collapsed],
+.load-strategy__container .blocklyDraggable image[alt=Collapsed] {
+  transform: translate(7px);
+}
+.zelos-renderer.zelos_renderer-theme .blocklyDragging,
+.flyout .zelos-renderer.classic-theme .blocklyDragging,
+.gtm-search-results .blocklyDragging,
+.load-strategy__container .blocklyDragging {
+  cursor: grabbing;
+  cursor: grabbing;
+  cursor: grabbing;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyDraggable:active,
+.zelos-renderer.zelos_renderer-theme .blocklyBlockDragSurface .blocklyDraggable,
+.flyout .zelos-renderer.classic-theme .blocklyDraggable:active,
+.flyout .zelos-renderer.classic-theme .blocklyBlockDragSurface .blocklyDraggable,
+.gtm-search-results .blocklyDraggable:active,
+.gtm-search-results .blocklyBlockDragSurface .blocklyDraggable,
+.load-strategy__container .blocklyDraggable:active,
+.load-strategy__container .blocklyBlockDragSurface .blocklyDraggable {
+  cursor: grabbing;
+  cursor: grabbing;
+  cursor: grabbing;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyDragging.blocklyDraggingMouseThrough,
+.flyout .zelos-renderer.classic-theme .blocklyDragging.blocklyDraggingMouseThrough,
+.gtm-search-results .blocklyDragging.blocklyDraggingMouseThrough,
+.load-strategy__container .blocklyDragging.blocklyDraggingMouseThrough {
+  pointer-events: none;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyToolboxGrab,
+.flyout .zelos-renderer.classic-theme .blocklyToolboxGrab,
+.gtm-search-results .blocklyToolboxGrab,
+.load-strategy__container .blocklyToolboxGrab {
+  cursor: grabbing;
+  cursor: grabbing;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyDragging > .blocklyPath,
+.zelos-renderer.zelos_renderer-theme .blocklyDragging > .blocklyPathLight,
+.flyout .zelos-renderer.classic-theme .blocklyDragging > .blocklyPath,
+.flyout .zelos-renderer.classic-theme .blocklyDragging > .blocklyPathLight,
+.gtm-search-results .blocklyDragging > .blocklyPath,
+.gtm-search-results .blocklyDragging > .blocklyPathLight,
+.load-strategy__container .blocklyDragging > .blocklyPath,
+.load-strategy__container .blocklyDragging > .blocklyPathLight {
+  fill-opacity: 1;
+  stroke-opacity: 1;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyDisabled > .blocklyPath,
+.flyout .zelos-renderer.classic-theme .blocklyDisabled > .blocklyPath,
+.gtm-search-results .blocklyDisabled > .blocklyPath,
+.load-strategy__container .blocklyDisabled > .blocklyPath {
+  fill-opacity: 0.5;
+  stroke-opacity: 0.5;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyInsertionMarker > .blocklyPath,
+.flyout .zelos-renderer.classic-theme .blocklyInsertionMarker > .blocklyPath,
+.gtm-search-results .blocklyInsertionMarker > .blocklyPath,
+.load-strategy__container .blocklyInsertionMarker > .blocklyPath {
+  stroke: none;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyText,
+.flyout .zelos-renderer.classic-theme .blocklyText,
+.gtm-search-results .blocklyText,
+.load-strategy__container .blocklyText {
+  fill: #333;
+  font-family: inherit;
+  font-size: 16.3px;
+  font-weight: normal;
+  font-stretch: normal;
+  font-style: normal;
+  line-height: 1.5;
+  letter-spacing: normal;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyTextTruncated,
+.flyout .zelos-renderer.classic-theme .blocklyTextTruncated,
+.gtm-search-results .blocklyTextTruncated,
+.load-strategy__container .blocklyTextTruncated {
+  font-size: 11px;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyNonEditableText > text,
+.flyout .zelos-renderer.classic-theme .blocklyNonEditableText > text,
+.gtm-search-results .blocklyNonEditableText > text,
+.load-strategy__container .blocklyNonEditableText > text {
+  pointer-events: none;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyNonEditableText > text,
+.zelos-renderer.zelos_renderer-theme .blocklyEditableText > text,
+.flyout .zelos-renderer.classic-theme .blocklyNonEditableText > text,
+.flyout .zelos-renderer.classic-theme .blocklyEditableText > text,
+.gtm-search-results .blocklyNonEditableText > text,
+.gtm-search-results .blocklyEditableText > text,
+.load-strategy__container .blocklyNonEditableText > text,
+.load-strategy__container .blocklyEditableText > text {
+  fill: var(--text-prominent);
+}
+.zelos-renderer.zelos_renderer-theme .blocklyEditableText > .blocklyEditableLabel,
+.flyout .zelos-renderer.classic-theme .blocklyEditableText > .blocklyEditableLabel,
+.gtm-search-results .blocklyEditableText > .blocklyEditableLabel,
+.load-strategy__container .blocklyEditableText > .blocklyEditableLabel {
+  fill: var(--text-prominent);
+}
+.zelos-renderer.zelos_renderer-theme .blocklyNonEditableText > image,
+.zelos-renderer.zelos_renderer-theme .blocklyEditableText > image,
+.flyout .zelos-renderer.classic-theme .blocklyNonEditableText > image,
+.flyout .zelos-renderer.classic-theme .blocklyEditableText > image,
+.gtm-search-results .blocklyNonEditableText > image,
+.gtm-search-results .blocklyEditableText > image,
+.load-strategy__container .blocklyNonEditableText > image,
+.load-strategy__container .blocklyEditableText > image {
+  filter: invert(1);
+}
+.zelos-renderer.zelos_renderer-theme .blocklyDropdownText,
+.flyout .zelos-renderer.classic-theme .blocklyDropdownText,
+.gtm-search-results .blocklyDropdownText,
+.load-strategy__container .blocklyDropdownText {
+  fill: var(--text-prominent) !important;
+  font-size: 16px;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyBubbleText,
+.flyout .zelos-renderer.classic-theme .blocklyBubbleText,
+.gtm-search-results .blocklyBubbleText,
+.load-strategy__container .blocklyBubbleText {
+  fill: #0e0e0e;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyFlyout,
+.flyout .zelos-renderer.classic-theme .blocklyFlyout,
+.gtm-search-results .blocklyFlyout,
+.load-strategy__container .blocklyFlyout {
+  position: absolute;
+  z-index: 20;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyFlyoutButton,
+.flyout .zelos-renderer.classic-theme .blocklyFlyoutButton,
+.gtm-search-results .blocklyFlyoutButton,
+.load-strategy__container .blocklyFlyoutButton {
+  fill: none;
+  pointer-events: all;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyFlyoutButtonBackground,
+.flyout .zelos-renderer.classic-theme .blocklyFlyoutButtonBackground,
+.gtm-search-results .blocklyFlyoutButtonBackground,
+.load-strategy__container .blocklyFlyoutButtonBackground {
+  stroke: #c6c6c6;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyFlyoutButton .blocklyText,
+.flyout .zelos-renderer.classic-theme .blocklyFlyoutButton .blocklyText,
+.gtm-search-results .blocklyFlyoutButton .blocklyText,
+.load-strategy__container .blocklyFlyoutButton .blocklyText {
+  fill: #0e0e0e;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyFlyoutButtonShadow,
+.flyout .zelos-renderer.classic-theme .blocklyFlyoutButtonShadow,
+.gtm-search-results .blocklyFlyoutButtonShadow,
+.load-strategy__container .blocklyFlyoutButtonShadow {
+  fill: transparent;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyFlyoutButton:hover,
+.flyout .zelos-renderer.classic-theme .blocklyFlyoutButton:hover,
+.gtm-search-results .blocklyFlyoutButton:hover,
+.load-strategy__container .blocklyFlyoutButton:hover {
+  fill: #fff;
+  cursor: pointer;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyFlyoutLabel,
+.flyout .zelos-renderer.classic-theme .blocklyFlyoutLabel,
+.gtm-search-results .blocklyFlyoutLabel,
+.load-strategy__container .blocklyFlyoutLabel {
+  cursor: default;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyFlyoutLabelBackground,
+.flyout .zelos-renderer.classic-theme .blocklyFlyoutLabelBackground,
+.gtm-search-results .blocklyFlyoutLabelBackground,
+.load-strategy__container .blocklyFlyoutLabelBackground {
+  opacity: 0;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyFlyoutLabelText,
+.flyout .zelos-renderer.classic-theme .blocklyFlyoutLabelText,
+.gtm-search-results .blocklyFlyoutLabelText,
+.load-strategy__container .blocklyFlyoutLabelText {
+  font-size: 14px;
+  fill: #575e75;
+  font-weight: bold;
+}
+.zelos-renderer.zelos_renderer-theme,
+.flyout .zelos-renderer.classic-theme,
+.gtm-search-results,
+.load-strategy__container {
+  /*
+  Don't allow users to select text.  It gets annoying when trying to
+  drag a block and selected text moves instead.
+  */
+}
+.zelos-renderer.zelos_renderer-theme .blocklySvg text,
+.zelos-renderer.zelos_renderer-theme .blocklyBlockDragSurface text,
+.zelos-renderer.zelos_renderer-theme .blocklyFlyout text,
+.zelos-renderer.zelos_renderer-theme .blocklyToolboxDiv text,
+.flyout .zelos-renderer.classic-theme .blocklySvg text,
+.flyout .zelos-renderer.classic-theme .blocklyBlockDragSurface text,
+.flyout .zelos-renderer.classic-theme .blocklyFlyout text,
+.flyout .zelos-renderer.classic-theme .blocklyToolboxDiv text,
+.gtm-search-results .blocklySvg text,
+.gtm-search-results .blocklyBlockDragSurface text,
+.gtm-search-results .blocklyFlyout text,
+.gtm-search-results .blocklyToolboxDiv text,
+.load-strategy__container .blocklySvg text,
+.load-strategy__container .blocklyBlockDragSurface text,
+.load-strategy__container .blocklyFlyout text,
+.load-strategy__container .blocklyToolboxDiv text {
+  user-select: none;
+  user-select: none;
+  user-select: none;
+  cursor: inherit;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyHidden,
+.flyout .zelos-renderer.classic-theme .blocklyHidden,
+.gtm-search-results .blocklyHidden,
+.load-strategy__container .blocklyHidden {
+  display: none;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyFieldDropdown:not(.blocklyHidden),
+.flyout .zelos-renderer.classic-theme .blocklyFieldDropdown:not(.blocklyHidden),
+.gtm-search-results .blocklyFieldDropdown:not(.blocklyHidden),
+.load-strategy__container .blocklyFieldDropdown:not(.blocklyHidden) {
+  display: block;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyIconGroup,
+.flyout .zelos-renderer.classic-theme .blocklyIconGroup,
+.gtm-search-results .blocklyIconGroup,
+.load-strategy__container .blocklyIconGroup {
+  cursor: default;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyIconGroup:not(:hover),
+.zelos-renderer.zelos_renderer-theme .blocklyIconGroupReadonly,
+.flyout .zelos-renderer.classic-theme .blocklyIconGroup:not(:hover),
+.flyout .zelos-renderer.classic-theme .blocklyIconGroupReadonly,
+.gtm-search-results .blocklyIconGroup:not(:hover),
+.gtm-search-results .blocklyIconGroupReadonly,
+.load-strategy__container .blocklyIconGroup:not(:hover),
+.load-strategy__container .blocklyIconGroupReadonly {
+  opacity: 0.6;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyIconShape,
+.flyout .zelos-renderer.classic-theme .blocklyIconShape,
+.gtm-search-results .blocklyIconShape,
+.load-strategy__container .blocklyIconShape {
+  fill: #00f;
+  stroke: #fff;
+  stroke-width: 1px;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyIconSymbol,
+.flyout .zelos-renderer.classic-theme .blocklyIconSymbol,
+.gtm-search-results .blocklyIconSymbol,
+.load-strategy__container .blocklyIconSymbol {
+  fill: #fff;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyMinimalBody,
+.flyout .zelos-renderer.classic-theme .blocklyMinimalBody,
+.gtm-search-results .blocklyMinimalBody,
+.load-strategy__container .blocklyMinimalBody {
+  margin: 0;
+  padding: 0;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyCommentForeignObject,
+.flyout .zelos-renderer.classic-theme .blocklyCommentForeignObject,
+.gtm-search-results .blocklyCommentForeignObject,
+.load-strategy__container .blocklyCommentForeignObject {
+  position: relative;
+  z-index: 0;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyCommentRect,
+.flyout .zelos-renderer.classic-theme .blocklyCommentRect,
+.gtm-search-results .blocklyCommentRect,
+.load-strategy__container .blocklyCommentRect {
+  fill: #e7de8e;
+  stroke: #bca903;
+  stroke-width: 1px;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyCommentTarget,
+.flyout .zelos-renderer.classic-theme .blocklyCommentTarget,
+.gtm-search-results .blocklyCommentTarget,
+.load-strategy__container .blocklyCommentTarget {
+  fill: transparent;
+  stroke: #bca903;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyCommentTargetFocused,
+.flyout .zelos-renderer.classic-theme .blocklyCommentTargetFocused,
+.gtm-search-results .blocklyCommentTargetFocused,
+.load-strategy__container .blocklyCommentTargetFocused {
+  fill: none;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyCommentHandleTarget,
+.flyout .zelos-renderer.classic-theme .blocklyCommentHandleTarget,
+.gtm-search-results .blocklyCommentHandleTarget,
+.load-strategy__container .blocklyCommentHandleTarget {
+  fill: none;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyCommentHandleTargetFocused,
+.flyout .zelos-renderer.classic-theme .blocklyCommentHandleTargetFocused,
+.gtm-search-results .blocklyCommentHandleTargetFocused,
+.load-strategy__container .blocklyCommentHandleTargetFocused {
+  fill: transparent;
+}
+.zelos-renderer.zelos_renderer-theme .blocklyFocused > .blocklyCommentRect,
+.flyout .zelos-renderer.classic-theme .blocklyFocused > .blocklyCommentRect,
+.gtm-search-results .blocklyFocused > .blocklyCommentRect,
+.load-strategy__container .blocklyFocused > .blocklyCommentRect {
+  fill: #b9b272;
+  stroke: #b9b272;
+}
+.zelos-renderer.zelos_renderer-th
