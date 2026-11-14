@@ -316,7 +316,7 @@
   document.addEventListener("algotrade:sniper-run-state", (e) => {
     if (e.detail.bot === "prohedging") return;
     running[e.detail.bot] = !!e.detail.running;
-    otherRunning = running.overunder ? "Over/Under" : running.evenodd ? "Even/Odd" : null;
+    otherRunning = running.overunder ? "Over/Under" : running.evenodd ? "Even/Odd" : running.prohedging2 ? "Pro Hedging 2" : null;
     setRunningUI(!!session);
   });
   const announce = (on) => document.dispatchEvent(new CustomEvent("algotrade:sniper-run-state", { detail: { bot: "prohedging", running: on } }));
