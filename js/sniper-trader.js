@@ -186,10 +186,14 @@
         ref.text.setAttribute("fill", isActive ? "#FFFFFF" : "#1A1D22");
       } else {
         const pct = (counts[d] / total) * 100;
-        ref.ringFg.setAttribute("stroke", ringColorFor(counts[d]));
+        const ringColor = ringColorFor(counts[d]);
+        const filled = ringColor === RISE_GREEN || ringColor === FALL_RED;
+        // Most / least frequent digits (green / red) also get a matching fill inside the ring. The digit stays dark (#1A1D22, set by CSS): about 8.7:1 contrast on the green fill and 6.1:1 on the red (white would be only 1.9:1 and 2.8:1).
+        ref.ringFg.setAttribute("stroke", ringColor);
         ref.ringFg.setAttribute("stroke-dasharray", circumference);
         ref.ringFg.setAttribute("stroke-dashoffset", circumference - (pct / 100) * circumference);
-        ref.fill.setAttribute("fill", "none");
+        ref.fill.setAttribute("fill", filled ? ringColor : "none");
+        ref.fill.setAttribute("fill-opacity", "0.9");
         ref.text.setAttribute("fill", "#1A1D22");
       }
       ref.pct.textContent = ((counts[d] / total) * 100).toFixed(1) + "%";
