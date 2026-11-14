@@ -76,7 +76,10 @@
   // ==========================================================
   // Digit distribution widget (same look + same math as the Sniper tab / digits.js)
   // ==========================================================
+  // Ring colours, by rank of each digit's share of the window:
+  //   most frequent = green, 2nd most = blue, 2nd least = yellow, least = red, everything in between = grey.
   const RISE_GREEN = "#2ECC8F", FALL_RED = "#FF5C5C";
+  const RING_SECOND_MOST = "#4DA3FF", RING_SECOND_LEAST = "#F4C430", RING_MIDDLE = "#BFC5CE";
   // How many of the newest ticks the percentages use (shared with the Manual Trader and Sniper widgets).
   const WINDOW_CHOICES = [1000, 500, 250, 100, 50, 25];
   const WINDOW_KEY = "algotrade.digitWindow";
@@ -121,16 +124,24 @@
     const total = shown.length || 1;
     const counts = new Array(10).fill(0);
     shown.forEach((d) => counts[d]++);
-    const max = Math.max.apply(null, counts);
-    const min = Math.min.apply(null, counts);
+    // Rank by distinct counts (highest first), so digits that tie share a colour.
+    const ranks = Array.from(new Set(counts)).sort((a, b) => b - a);
+    const most = ranks[0], least = ranks[ranks.length - 1];
+    const secondMost = ranks.length > 1 ? ranks[1] : null, secondLeast = ranks.length > 1 ? ranks[ranks.length - 2] : null;
+    const ringColor = (c) => {
+      if (ranks.length < 2) return RING_MIDDLE;        // nothing to tell apart (e.g. before any ticks have loaded)
+      if (c === most) return RISE_GREEN;
+      if (c === least) return FALL_RED;
+      if (c === secondMost) return RING_SECOND_MOST;
+      if (c === secondLeast) return RING_SECOND_LEAST;
+      return RING_MIDDLE;
+    };
     const last = history.length ? history[history.length - 1] : null;
     const circumference = 2 * Math.PI * 18;
     for (let d = 0; d <= 9; d++) {
       const ref = cellRefs[d];
       const pct = (counts[d] / total) * 100;
-      const isMax = counts[d] === max && max !== min;
-      const isMin = counts[d] === min && max !== min;
-      ref.ringFg.setAttribute("stroke", isMax ? RISE_GREEN : isMin ? FALL_RED : "#D4A94A");
+      ref.ringFg.setAttribute("stroke", ringColor(counts[d]));
       ref.ringFg.setAttribute("stroke-dasharray", circumference);
       ref.ringFg.setAttribute("stroke-dashoffset", circumference - (pct / 100) * circumference);
       ref.fill.setAttribute("fill", "none");
