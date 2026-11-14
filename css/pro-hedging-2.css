@@ -1,0 +1,29 @@
+/* ==========================================================
+   AlgoTrade — Pro Hedging 2 tab
+   Same look as the Pro Hedging tab: every .ph-* class (progress bars, widget
+   spacing, boxes, history table, small-screen rules) comes from pro-hedging.css,
+   which must be loaded too. This file only holds what is tied to THIS tab's id.
+   ========================================================== */
+
+/* ---------- Layout safety while this tab is open (same rules as the Pro Hedging tab) ---------- */
+html:has(body.hedge2-active) { height: auto !important; overflow-y: auto !important; }
+body.hedge2-active { height: auto !important; min-height: 100vh; min-height: 100dvh; overflow: visible !important; }
+body.hedge2-active main {
+  flex: 1 0 auto !important; height: auto !important; min-height: 0 !important;
+  max-height: none !important; overflow: visible !important; align-items: flex-start !important;
+}
+body.hedge2-active .account-panel,
+body.hedge2-active #tab-pro-hedging-2 { height: auto !important; max-height: none !important; overflow: visible !important; }
+body.hedge2-active footer {
+  position: static !important; flex-shrink: 0; transform: none !important;
+  padding-bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* ---------- Never wider than the screen (cards may shrink; only long free text may break mid-word) ---------- */
+#tab-pro-hedging-2 { min-width: 0; max-width: 100%; }
+#tab-pro-hedging-2 .sniper-workspace,
+#tab-pro-hedging-2 .sniper-workspace > .sniper-card { min-width: 0; max-width: 100%; }
+#tab-pro-hedging-2 .sniper-msg, #tab-pro-hedging-2 .ph-preview, #tab-pro-hedging-2 .ph-hist-note, #tab-pro-hedging-2 .ph-sub { overflow-wrap: anywhere; }
+
+/* ---------- Last-digits strip: 0, 1, 2 (the digits that lose Over 2) are tinted ---------- */
+.ph-dg.lose { background: rgba(255, 92, 92, 0.14); color: var(--fall); }
