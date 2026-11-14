@@ -72,6 +72,10 @@ let activeContract = null;
 
 const RISE_GREEN = "#2ECC8F";
 const FALL_RED = "#FF5C5C";
+// Frequency view ring colours: most = green, 2nd most = blue, 2nd least = yellow, least = red, in between = grey.
+const RING_SECOND_MOST = "#4DA3FF";
+const RING_SECOND_LEAST = "#F4C430";
+const RING_MIDDLE = "#BFC5CE";
 
 // Which digits 0-9 currently count as a win for a given digit contract.
 function computeWinSet(contractType, barrier) {
@@ -144,8 +148,19 @@ function renderDigits() {
 
   const total = digitsInWindow().length || 1;
   const counts = computeCounts();
-  const max = Math.max(...counts);
-  const min = Math.min(...counts);
+  // Rank the digits by their share of the window (highest count first). Digits that tie share a colour.
+  const ranks = Array.from(new Set(counts)).sort((a, b) => b - a);
+  const mostCount = ranks[0], leastCount = ranks[ranks.length - 1];
+  const secondMostCount = ranks.length > 1 ? ranks[1] : null;
+  const secondLeastCount = ranks.length > 1 ? ranks[ranks.length - 2] : null;
+  const ringColorFor = (c) => {
+    if (ranks.length < 2) return RING_MIDDLE;         // nothing to tell apart (equal shares, or no ticks yet)
+    if (c === mostCount) return RISE_GREEN;           // most frequent
+    if (c === leastCount) return FALL_RED;            // least frequent
+    if (c === secondMostCount) return RING_SECOND_MOST;     // second most frequent
+    if (c === secondLeastCount) return RING_SECOND_LEAST;   // second least frequent
+    return RING_MIDDLE;                               // everything in between
+  };
   const lastDigit = digitHistory.length ? digitHistory[digitHistory.length - 1] : null;
   const circumference = 2 * Math.PI * 18; // r=18
 
@@ -170,9 +185,7 @@ function renderDigits() {
       // No open contract: back to normal frequency stats over the selected number of ticks.
       const pct = (counts[d] / total) * 100;
       const dashOffset = circumference - (pct / 100) * circumference;
-      const isMax = counts[d] === max && max !== min;
-      const isMin = counts[d] === min && max !== min;
-      const ringColor = isMax ? RISE_GREEN : isMin ? FALL_RED : "#D4A94A";
+      const ringColor = ringColorFor(counts[d]);
 
       ref.ringFg.setAttribute("stroke", ringColor);
       ref.ringFg.setAttribute("stroke-dasharray", circumference);
