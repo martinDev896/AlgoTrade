@@ -45,6 +45,11 @@ function startSniperEngine(deps, cfg, hooks) {
   // takes pattern trades (martingale still running) and a loss does NOT start recovery mode.
   // The first win clears it, and only then can recovery mode start again.
   const st = { stake: cfg.stake, recovery: false, recCount: 0, recoveryLocked: false, profit: 0, trades: 0, wins: 0, window: [] };
+  // Immediate recovery (checkbox, default ON = the behaviour the bot always had): after a loss the recovery trades are
+  // bought straight away, with no waiting for a tick. When it is OFF the bot instead goes back to waiting for its entry
+  // pattern (and confirm digits) before EVERY recovery trade, exactly as it does for a pattern trade. The stake is still
+  // multiplied after each loss, and the recovery limit / cooldown rules are unchanged.
+  const IMMEDIATE = cfg.immediate !== false;
   let running = true, busy = false, ended = false;
   let quote = null, offTick = null, offReconnect = null, watchdog = null, lastQuoteStake = null;
   let earlyDisabled = false;
@@ -635,7 +640,7 @@ function startSniperEngine(deps, cfg, hooks) {
         if (hit) running = false;
 
         // Start the next buy BEFORE any screen/log work, so nothing delays it.
-        if (running && st.recovery) {
+        if (running && st.recovery && IMMEDIATE) {
           nextBuy = { promise: buyContract(st.stake), sentAt: now() };
           lossSeenAt = seenAt;
           lossExitTickAt = exitTickAt;
@@ -650,7 +655,7 @@ function startSniperEngine(deps, cfg, hooks) {
         if (hit) log(hit);
         else if (!nextBuy) ensureQuote(st.stake); // keep a live quote ready for whatever comes next
         // Recovery loop: the next buy is already on its way — track it, no waiting for a tick.
-      } while (nextBuy || (running && st.recovery));
+      } while (nextBuy || (running && st.recovery && IMMEDIATE));
     } catch (e) {
       if (!(e && e.stopAbort)) log("Error: " + ((e && e.message) || "unknown") + " - bot stopped.");
       running = false;
@@ -707,7 +712,7 @@ function startSniperEngine(deps, cfg, hooks) {
   status("Waiting for pattern");
   stats({ trades: 0, wins: 0, profit: 0, stake: st.stake });
   log("Started: waiting for " + cfg.nDigits + " digits " + (cfg.compare === "GTE" ? ">=" : "<=") + " " + cfg.threshold +
-      ", then " + cfg.contract + " " + cfg.prediction + ".");
+      ", then " + cfg.contract + " " + cfg.prediction + "." + (IMMEDIATE ? "" : " Immediate recovery is OFF: every recovery trade waits for the entry pattern too."));
 
   return {
     done: done,
