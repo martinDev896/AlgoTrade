@@ -23,7 +23,7 @@
     banner: $("eo-banner"), marketLine: $("eo-market-line"), hint: $("eo-hint"),
     mode: $("eo-mode"), duration: $("eo-duration"), nDigits: $("eo-ndigits"), confirm: $("eo-confirm"), maxRec: $("eo-maxrec"),
     stake: $("eo-stake"), mult: $("eo-mult"), tp: $("eo-tp"), sl: $("eo-sl"), maxTrades: $("eo-maxtrades"),
-    hardStop: $("eo-hardstop"), fastRead: $("eo-fastread"), cooldown: $("eo-cooldown"),
+    hardStop: $("eo-hardstop"), fastRead: $("eo-fastread"), cooldown: $("eo-cooldown"), immediate: $("eo-immediate"),
     run: $("eo-run"), stop: $("eo-stop"),
     status: $("eo-status"), last: $("eo-last"), trades: $("eo-trades"), wins: $("eo-wins"), losses: $("eo-losses"), next: $("eo-next"), profit: $("eo-profit"),
     log: $("eo-log"),
@@ -146,7 +146,7 @@
       currency: activeCurrency(), symbol: meta.symbol, pipDecimals: decimalPlacesFor(meta.pipSize),
       mode: el.mode.value, duration: num(el.duration), nDigits: num(el.nDigits), confirmDigits: num(el.confirm), maxRecovery: num(el.maxRec),
       stake: num(el.stake), mult: num(el.mult), tp: num(el.tp), sl: num(el.sl), maxTrades: num(el.maxTrades),
-      hardStop: !!el.hardStop.checked, fastRead: !!el.fastRead.checked, cooldown: !!el.cooldown.checked, sharedFeed: !window.DERIV_NO_SHARED_STREAM,
+      hardStop: !!el.hardStop.checked, fastRead: !!el.fastRead.checked, cooldown: !!el.cooldown.checked, immediate: !!el.immediate.checked, sharedFeed: !window.DERIV_NO_SHARED_STREAM,
     };
     let err = null;
     if (!(cfg.stake >= 0.35)) err = "Stake must be at least 0.35.";
@@ -224,7 +224,7 @@
     el.run.disabled = on || otherRunning;
     el.run.title = otherRunning && !on ? "The Over/Under bot is running. Stop it first." : "";
     el.stop.disabled = !on;
-    [el.mode, el.duration, el.nDigits, el.confirm, el.maxRec, el.stake, el.mult, el.tp, el.sl, el.maxTrades, el.hardStop, el.fastRead, el.cooldown]
+    [el.mode, el.duration, el.nDigits, el.confirm, el.maxRec, el.stake, el.mult, el.tp, el.sl, el.maxTrades, el.hardStop, el.fastRead, el.cooldown, el.immediate]
       .forEach((x) => { x.disabled = on; });
     // The shared market dropdown is locked while ANY sniper bot is running.
     const lock = on || otherRunning;
