@@ -42,6 +42,10 @@
   // ---------- helpers ----------
   const RISE_GREEN = "#2ECC8F";
   const FALL_RED = "#FF5C5C";
+  // Frequency view ring colours: most = green, 2nd most = blue, 2nd least = yellow, least = red, in between = grey.
+  const RING_SECOND_MOST = "#4DA3FF";
+  const RING_SECOND_LEAST = "#F4C430";
+  const RING_MIDDLE = "#BFC5CE";
 
   function decimalPlacesFor(pipSize) {
     const str = String(pipSize);
@@ -156,8 +160,19 @@
     const total = shown.length || 1;
     const counts = new Array(10).fill(0);
     shown.forEach((d) => counts[d]++);
-    const max = Math.max.apply(null, counts);
-    const min = Math.min.apply(null, counts);
+    // Rank the digits by their share of the window (highest count first). Digits that tie share a colour.
+    const ranks = Array.from(new Set(counts)).sort((a, b) => b - a);
+    const mostCount = ranks[0], leastCount = ranks[ranks.length - 1];
+    const secondMostCount = ranks.length > 1 ? ranks[1] : null;
+    const secondLeastCount = ranks.length > 1 ? ranks[ranks.length - 2] : null;
+    const ringColorFor = (c) => {
+      if (ranks.length < 2) return RING_MIDDLE;         // nothing to tell apart (equal shares, or no ticks yet)
+      if (c === mostCount) return RISE_GREEN;           // most frequent
+      if (c === leastCount) return FALL_RED;            // least frequent
+      if (c === secondMostCount) return RING_SECOND_MOST;     // second most frequent
+      if (c === secondLeastCount) return RING_SECOND_LEAST;   // second least frequent
+      return RING_MIDDLE;                               // everything in between
+    };
     const last = history.length ? history[history.length - 1] : null;
     const circumference = 2 * Math.PI * 18;
 
@@ -175,12 +190,14 @@
         ref.text.setAttribute("fill", isActive ? "#FFFFFF" : "#1A1D22");
       } else {
         const pct = (counts[d] / total) * 100;
-        const isMax = counts[d] === max && max !== min;
-        const isMin = counts[d] === min && max !== min;
-        ref.ringFg.setAttribute("stroke", isMax ? RISE_GREEN : isMin ? FALL_RED : "#D4A94A");
+        const ringColor = ringColorFor(counts[d]);
+        const filled = ringColor === RISE_GREEN || ringColor === FALL_RED;
+        // Most / least frequent digits (green / red) also get a matching fill inside the ring. The digit stays dark (#1A1D22, set by CSS): about 8.7:1 contrast on the green fill and 6.1:1 on the red (white would be only 1.9:1 and 2.8:1).
+        ref.ringFg.setAttribute("stroke", ringColor);
         ref.ringFg.setAttribute("stroke-dasharray", circumference);
         ref.ringFg.setAttribute("stroke-dashoffset", circumference - (pct / 100) * circumference);
-        ref.fill.setAttribute("fill", "none");
+        ref.fill.setAttribute("fill", filled ? ringColor : "none");
+        ref.fill.setAttribute("fill-opacity", "0.9");
         ref.text.setAttribute("fill", "#1A1D22");
       }
       ref.pct.textContent = ((counts[d] / total) * 100).toFixed(1) + "%";
