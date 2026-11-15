@@ -27,7 +27,7 @@
     banner: $("sn-banner"), marketLine: $("sn-market-line"),
     contract: $("sn-contract"), prediction: $("sn-prediction"), duration: $("sn-duration"),
     nDigits: $("sn-ndigits"), confirm: $("sn-confirm"), compare: $("sn-compare"), threshold: $("sn-threshold"),
-    maxRec: $("sn-maxrec"), stake: $("sn-stake"), mult: $("sn-mult"), tp: $("sn-tp"), sl: $("sn-sl"), hardStop: $("sn-hardstop"), fastRead: $("sn-fastread"), cooldown: $("sn-cooldown"),
+    maxRec: $("sn-maxrec"), stake: $("sn-stake"), mult: $("sn-mult"), tp: $("sn-tp"), sl: $("sn-sl"), hardStop: $("sn-hardstop"), fastRead: $("sn-fastread"), cooldown: $("sn-cooldown"), immediate: $("sn-immediate"),
     run: $("sn-run"), stop: $("sn-stop"),
     status: $("sn-status"), last: $("sn-last"), trades: $("sn-trades"), wins: $("sn-wins"), losses: $("sn-losses"), next: $("sn-next"), profit: $("sn-profit"),
     log: $("sn-log"),
@@ -321,6 +321,7 @@
       hardStop: !!el.hardStop.checked,
       fastRead: !!el.fastRead.checked,
       cooldown: !!el.cooldown.checked,
+      immediate: !!el.immediate.checked,
       sharedFeed: !window.DERIV_NO_SHARED_STREAM,
     };
     const over = cfg.contract === "DIGITOVER";
@@ -423,7 +424,7 @@
     el.marketSelect.disabled = lock;
     el.marketSelect.title = lock ? "Stop the running bot to change market" : "";
     [el.contract, el.prediction, el.duration, el.nDigits, el.confirm, el.compare, el.threshold,
-     el.maxRec, el.stake, el.mult, el.tp, el.sl, el.hardStop, el.fastRead, el.cooldown].forEach((x) => { x.disabled = on; });
+     el.maxRec, el.stake, el.mult, el.tp, el.sl, el.hardStop, el.fastRead, el.cooldown, el.immediate].forEach((x) => { x.disabled = on; });
   }
 
   function winSetFor(contract, prediction) {
