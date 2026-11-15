@@ -26,10 +26,10 @@
   const el = {
     banner: $("sn-banner"), marketLine: $("sn-market-line"),
     contract: $("sn-contract"), prediction: $("sn-prediction"), duration: $("sn-duration"),
-    nDigits: $("sn-ndigits"), compare: $("sn-compare"), threshold: $("sn-threshold"),
+    nDigits: $("sn-ndigits"), confirm: $("sn-confirm"), compare: $("sn-compare"), threshold: $("sn-threshold"),
     maxRec: $("sn-maxrec"), stake: $("sn-stake"), mult: $("sn-mult"), tp: $("sn-tp"), sl: $("sn-sl"), hardStop: $("sn-hardstop"), fastRead: $("sn-fastread"), cooldown: $("sn-cooldown"),
     run: $("sn-run"), stop: $("sn-stop"),
-    status: $("sn-status"), last: $("sn-last"), next: $("sn-next"), profit: $("sn-profit"),
+    status: $("sn-status"), last: $("sn-last"), trades: $("sn-trades"), wins: $("sn-wins"), losses: $("sn-losses"), next: $("sn-next"), profit: $("sn-profit"),
     log: $("sn-log"),
     digitsRow: $("sn-digits-row"), digitsLabel: $("sn-digits-label"), digitsNote: $("sn-digits-note"),
     marketSelect: $("sn-market-select"), windowSelect: $("sn-window"),
@@ -42,10 +42,6 @@
   // ---------- helpers ----------
   const RISE_GREEN = "#2ECC8F";
   const FALL_RED = "#FF5C5C";
-  // Frequency view ring colours: most = green, 2nd most = blue, 2nd least = yellow, least = red, in between = grey.
-  const RING_SECOND_MOST = "#4DA3FF";
-  const RING_SECOND_LEAST = "#F4C430";
-  const RING_MIDDLE = "#BFC5CE";
 
   function decimalPlacesFor(pipSize) {
     const str = String(pipSize);
@@ -76,7 +72,7 @@
     if (QUIET.test(text)) return;
     const bad = /^Error|stop loss|WARNING|Check settings|could take the loss|Not connected|Choose a synthetic|Account changed|is running/i.test(text);
     const good = /Take profit|^Reconnected/i.test(text);
-    const warn = /^Connection lost/i.test(text);
+    const warn = /^Connection lost|rate limit/i.test(text);
     el.log.textContent = text;
     el.log.className = "sniper-msg" + (bad ? " bad" : good ? " good" : warn ? " warn" : "");
   }
@@ -95,12 +91,16 @@
     }
     prevProfit = s.profit; prevTrades = s.trades;
     el.next.textContent = s.stake.toFixed(2);
+    el.trades.textContent = s.trades;
+    el.wins.textContent = s.wins;
+    el.losses.textContent = Math.max(0, s.trades - s.wins);
   }
   function resetDash(stake) {
     prevProfit = 0; prevTrades = 0;
     el.profit.textContent = "0.00"; tone(el.profit, 0);
     el.last.textContent = ""; tone(el.last, 0);
     el.next.textContent = stake.toFixed(2);
+    el.trades.textContent = "0"; el.wins.textContent = "0"; el.losses.textContent = "0";
   }
   function setStatus(text) {
     el.status.textContent = text;
@@ -156,19 +156,8 @@
     const total = shown.length || 1;
     const counts = new Array(10).fill(0);
     shown.forEach((d) => counts[d]++);
-    // Rank the digits by their share of the window (highest count first). Digits that tie share a colour.
-    const ranks = Array.from(new Set(counts)).sort((a, b) => b - a);
-    const mostCount = ranks[0], leastCount = ranks[ranks.length - 1];
-    const secondMostCount = ranks.length > 1 ? ranks[1] : null;
-    const secondLeastCount = ranks.length > 1 ? ranks[ranks.length - 2] : null;
-    const ringColorFor = (c) => {
-      if (ranks.length < 2) return RING_MIDDLE;         // nothing to tell apart (equal shares, or no ticks yet)
-      if (c === mostCount) return RISE_GREEN;           // most frequent
-      if (c === leastCount) return FALL_RED;            // least frequent
-      if (c === secondMostCount) return RING_SECOND_MOST;     // second most frequent
-      if (c === secondLeastCount) return RING_SECOND_LEAST;   // second least frequent
-      return RING_MIDDLE;                               // everything in between
-    };
+    const max = Math.max.apply(null, counts);
+    const min = Math.min.apply(null, counts);
     const last = history.length ? history[history.length - 1] : null;
     const circumference = 2 * Math.PI * 18;
 
@@ -186,14 +175,12 @@
         ref.text.setAttribute("fill", isActive ? "#FFFFFF" : "#1A1D22");
       } else {
         const pct = (counts[d] / total) * 100;
-        const ringColor = ringColorFor(counts[d]);
-        const filled = ringColor === RISE_GREEN || ringColor === FALL_RED;
-        // Most / least frequent digits (green / red) also get a matching fill inside the ring. The digit stays dark (#1A1D22, set by CSS): about 8.7:1 contrast on the green fill and 6.1:1 on the red (white would be only 1.9:1 and 2.8:1).
-        ref.ringFg.setAttribute("stroke", ringColor);
+        const isMax = counts[d] === max && max !== min;
+        const isMin = counts[d] === min && max !== min;
+        ref.ringFg.setAttribute("stroke", isMax ? RISE_GREEN : isMin ? FALL_RED : "#D4A94A");
         ref.ringFg.setAttribute("stroke-dasharray", circumference);
         ref.ringFg.setAttribute("stroke-dashoffset", circumference - (pct / 100) * circumference);
-        ref.fill.setAttribute("fill", filled ? ringColor : "none");
-        ref.fill.setAttribute("fill-opacity", "0.9");
+        ref.fill.setAttribute("fill", "none");
         ref.text.setAttribute("fill", "#1A1D22");
       }
       ref.pct.textContent = ((counts[d] / total) * 100).toFixed(1) + "%";
@@ -306,6 +293,7 @@
       prediction: num(el.prediction),
       duration: num(el.duration),
       nDigits: num(el.nDigits),
+      confirmDigits: num(el.confirm),
       compare: el.compare.value,
       threshold: num(el.threshold),
       maxRecovery: num(el.maxRec),
@@ -316,6 +304,7 @@
       hardStop: !!el.hardStop.checked,
       fastRead: !!el.fastRead.checked,
       cooldown: !!el.cooldown.checked,
+      sharedFeed: !window.DERIV_NO_SHARED_STREAM,
     };
     const over = cfg.contract === "DIGITOVER";
     const isDigit = (v) => Number.isInteger(v) && v >= 0 && v <= 9;
@@ -325,6 +314,7 @@
       err = over ? "Digit Over needs a prediction from 0 to 8." : "Digit Under needs a prediction from 1 to 9.";
     else if (!isDigit(cfg.threshold)) err = "Pattern digit must be from 0 to 9.";
     else if (!Number.isInteger(cfg.nDigits) || cfg.nDigits < 1 || cfg.nDigits > 10) err = "Digits in a row must be a whole number from 1 to 10.";
+    else if (!Number.isInteger(cfg.confirmDigits) || cfg.confirmDigits < 0 || cfg.confirmDigits > 10) err = "Confirm digits must be a whole number from 0 to 10 (0 = off).";
     else if (!Number.isInteger(cfg.duration) || cfg.duration < 1) err = "Duration must be at least 1 tick.";
     else if (!Number.isInteger(cfg.maxRecovery) || cfg.maxRecovery < 1) err = "Max recovery trades must be at least 1.";
     else if (!(cfg.mult >= 1)) err = "Multiplier must be 1 or more.";
@@ -342,6 +332,21 @@
   //   notSent        - the socket was not open, nothing left the browser (safe to send again)
   //   connectionLost - the socket died while we waited for the reply (the request may or may not have arrived)
   //   timeout        - no reply within 20 s
+  // Deriv shares one budget (360 requests a minute) between proposal, proposal_open_contract, buy and sell.
+  // This keeps a running count of what THIS bot sends and mentions it in the browser console when it is high.
+  const BUDGETED = { proposal: 1, proposal_open_contract: 1, buy: 1, sell: 1 };
+  const stamps = [];
+  let lastCountNote = 0;
+  function countRequest(req) {
+    if (!BUDGETED[Object.keys(req)[0]]) return;
+    const t = Date.now();
+    stamps.push(t);
+    while (stamps.length && t - stamps[0] > 60000) stamps.shift();
+    if (stamps.length >= 200 && t - lastCountNote > 20000) {
+      lastCountNote = t;
+      console.debug("[sniper] about " + stamps.length + " budgeted requests in the last minute (Deriv's limit is 360)");
+    }
+  }
   const isOpen = () => !!derivAPI.ws && derivAPI.ws.readyState === WebSocket.OPEN;
   function sendWithDiagnosis(req) {
     return new Promise((resolve, reject) => {
@@ -355,6 +360,7 @@
         }
       }, 200);
       timer = setTimeout(() => { const e = new Error("No reply from Deriv within 20 seconds"); e.timeout = true; finish(reject, e); }, 20000);
+      countRequest(req);
       derivAPI.send(req).then((r) => finish(resolve, r), (e) => finish(reject, e));
     });
   }
@@ -363,7 +369,7 @@
     isOpen: isOpen,
     socketId: () => derivAPI.ws,
     send: sendWithDiagnosis,
-    subscribe: (req, cb) => derivAPI.subscribe(req, cb),
+    subscribe: (req, cb) => { countRequest(req); return derivAPI.subscribe(req, cb); },
     onTick: (fn) => {
       const h = (e) => fn(e.detail);
       document.addEventListener("algotrade:tick", h);
@@ -399,7 +405,7 @@
     const lock = on || otherRunning;
     el.marketSelect.disabled = lock;
     el.marketSelect.title = lock ? "Stop the running bot to change market" : "";
-    [el.contract, el.prediction, el.duration, el.nDigits, el.compare, el.threshold,
+    [el.contract, el.prediction, el.duration, el.nDigits, el.confirm, el.compare, el.threshold,
      el.maxRec, el.stake, el.mult, el.tp, el.sl, el.hardStop, el.fastRead, el.cooldown].forEach((x) => { x.disabled = on; });
   }
 
