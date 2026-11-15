@@ -1,723 +1,490 @@
 // ==========================================================
-// AlgoTrade — sniper-engine.js
-// The Sniper Trader strategy, with no DOM access (sniper-trader.js
-// is the UI that drives it).
+// AlgoTrade — sniper-trader.js
+// The "Sniper Trader" tab: settings, Run / Stop, a trade log, and the
+// last-digit distribution widget (last 1,000 ticks) at the bottom with
+// a market dropdown.
 //
-//   - Waits for N digits in a row at/above (or at/below) a threshold.
-//   - Then buys a digits contract (Under/Over).
-//   - After a LOSS it buys again immediately (recovery trade), up to
-//     `maxRecovery` recovery trades in a row, then goes back to
-//     waiting for the pattern.
-//   - Martingale: the stake is multiplied after EVERY loss, and only
-//     a WIN resets it.
-//   - Stops on take profit / stop loss / Stop button / any error.
-//
-// SPEED (why a recovery buy can go out before Deriv's "sold" message):
-//   A digits contract is decided by its exit tick's last digit. Deriv
-//   publishes that exit tick as soon as the contract expires, and the
-//   final "is_sold" update can arrive later. After a loss the engine
-//   reads the exit digit straight from that early update, starts the
-//   next buy immediately (using a quote cached while the contract was
-//   open), and only afterwards reconciles with the final result. A win
-//   always waits for the final result (no speed needed there). If the
-//   early read ever disagrees with the final result, the engine logs a
-//   warning and switches the early path off for the rest of the run.
-//   The log shows timings so you can see where any remaining delay is.
-//
-// It talks to Deriv only through the `deps` it is given (send /
-// subscribe from the app's own derivAPI), so it uses the same
-// connection, proposal and buy requests as Manual Trader — it never
-// authorizes or connects anything itself.
+// Rules this file follows:
+//   - It never touches auth.js / api.js. It only CALLS derivAPI.send /
+//     derivAPI.subscribe, exactly like trade.js and bot-runtime.js do.
+//   - No second ticks subscription: live ticks come from the shared
+//     "algotrade:tick" broadcast (markets.js owns the one subscription).
+//   - The market is the app's single shared selection
+//     (AppState.selectedSymbol / selectSymbol), same as Manual Trader and
+//     the Blockly bot. The dropdown below the widget changes it, and it is
+//     locked while the bot is running.
+//   - Trades are ordinary proposal + buy requests on the same connection
+//     as every other trade in the app (see sniper-engine.js).
 // ==========================================================
+(function () {
+  "use strict";
 
-function startSniperEngine(deps, cfg, hooks) {
-  hooks = hooks || {};
-  const log = hooks.log || function () {};
-  // `status` remembers the last status so it can be restored after a reconnect, and stays quiet while reconnecting.
-  let lastStatus = "", reconnectNoticeOn = false;
-  const status = function (s) { lastStatus = s; if (!reconnectNoticeOn && hooks.status) hooks.status(s); };
-  const stats = hooks.stats || function () {};
-  const round2 = (x) => Math.round(x * 100) / 100;
-  const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
-  const ms = (a, b) => Math.round(b - a) + " ms";
+  const $ = (id) => document.getElementById(id);
+  const tabEl = $("tab-sniper-trader");
+  if (!tabEl) return;
 
-  // recoveryLocked: set when a full set of recovery trades fails. While locked, the bot only
-  // takes pattern trades (martingale still running) and a loss does NOT start recovery mode.
-  // The first win clears it, and only then can recovery mode start again.
-  const st = { stake: cfg.stake, recovery: false, recCount: 0, recoveryLocked: false, profit: 0, trades: 0, wins: 0, window: [] };
-  let running = true, busy = false, ended = false;
-  let quote = null, offTick = null, offReconnect = null, watchdog = null, lastQuoteStake = null;
-  let earlyDisabled = false;
-  // Tick timing (used for the speed readout and for the optional fast loss reading)
-  let lastTickAt = null, tickInterval = null;   // tickInterval: running average gap between ticks (ms)
-  let current = null;                 // the contract we're waiting on: { confirmedAt, ticks:[{digit,at}], watch, firedEarly, kAtFinal }
-  const fast = { enabled: false, k: null, streak: 0, need: 6 };
-  let resolveDone;
-  const done = new Promise((res) => { resolveDone = res; });
+  const el = {
+    banner: $("sn-banner"), marketLine: $("sn-market-line"),
+    contract: $("sn-contract"), prediction: $("sn-prediction"), duration: $("sn-duration"),
+    nDigits: $("sn-ndigits"), confirm: $("sn-confirm"), compare: $("sn-compare"), threshold: $("sn-threshold"),
+    maxRec: $("sn-maxrec"), stake: $("sn-stake"), mult: $("sn-mult"), tp: $("sn-tp"), sl: $("sn-sl"), hardStop: $("sn-hardstop"), fastRead: $("sn-fastread"), cooldown: $("sn-cooldown"),
+    run: $("sn-run"), stop: $("sn-stop"),
+    status: $("sn-status"), last: $("sn-last"), trades: $("sn-trades"), wins: $("sn-wins"), losses: $("sn-losses"), next: $("sn-next"), profit: $("sn-profit"),
+    log: $("sn-log"),
+    digitsRow: $("sn-digits-row"), digitsLabel: $("sn-digits-label"), digitsNote: $("sn-digits-note"),
+    marketSelect: $("sn-market-select"), windowSelect: $("sn-window"),
+  };
 
-  // ---------- Proposal / quote helpers (same request shape as trade.js) ----------
-  function proposalReq(stake) {
-    return {
-      proposal: 1,
-      amount: stake,
-      basis: "stake",
-      contract_type: cfg.contract,
-      currency: cfg.currency,
-      underlying_symbol: cfg.symbol,
-      duration: cfg.duration,
-      duration_unit: "t",
-      barrier: String(cfg.prediction),
-    };
+  let session = null;           // running engine, if any
+  let activeWinSet = null;      // digits that currently count as a win (while the bot's contract is open)
+  let clearAfterTick = false;   // the contract has ended: keep its colours through the exit tick, clear on the NEXT tick
+
+  // ---------- helpers ----------
+  const RISE_GREEN = "#2ECC8F";
+  const FALL_RED = "#FF5C5C";
+
+  function decimalPlacesFor(pipSize) {
+    const str = String(pipSize);
+    const dot = str.indexOf(".");
+    return dot === -1 ? 0 : str.length - dot - 1;
+  }
+  function symbolMeta(symbol) {
+    return (AppState.allSymbols || []).find((s) => s.symbol === symbol) || null;
+  }
+  function isSynthetic(meta) {
+    return !!meta && meta.marketCode === "synthetic_index";
+  }
+  function activeAccount() {
+    return AppState.accounts.find((a) => a.account_id === AppState.activeAccountId) || null;
+  }
+  function activeCurrency() {
+    const a = activeAccount();
+    return a ? a.currency : "USD";
+  }
+  function tabIsVisible() {
+    return !tabEl.classList.contains("hidden");
+  }
+  // On-screen notice: only the latest IMPORTANT message is shown (errors, limits reached, warnings).
+  // The detailed trade log (timings, every trade) stays in the browser console (F12) for troubleshooting.
+  const QUIET = /^(timing:|speed:|debug |Pattern:|Started:|Stop requested|Fast loss reading ON|WON |LOST |Bot stopped)/;
+  function log(text) {
+    console.debug("[Over/Under bot] " + text);
+    if (QUIET.test(text)) return;
+    const bad = /^Error|stop loss|WARNING|Check settings|could take the loss|Not connected|Choose a synthetic|Account changed|is running/i.test(text);
+    const good = /Take profit|^Reconnected/i.test(text);
+    const warn = /^Connection lost|rate limit/i.test(text);
+    el.log.textContent = text;
+    el.log.className = "sniper-msg" + (bad ? " bad" : good ? " good" : warn ? " warn" : "");
+  }
+  function clearMsg() { el.log.textContent = ""; el.log.className = "sniper-msg hidden"; }
+
+  const signed = (x) => (x > 0 ? "+" : "") + x.toFixed(2);
+  const tone = (node, v) => { node.classList.toggle("sniper-pos", v > 0); node.classList.toggle("sniper-neg", v < 0); };
+  let prevProfit = 0, prevTrades = 0;
+  function paintStats(s) {
+    el.profit.textContent = signed(s.profit);
+    tone(el.profit, s.profit);
+    if (s.trades > prevTrades) {                          // a trade just finished: show its result
+      const d = Math.round((s.profit - prevProfit) * 100) / 100;
+      el.last.textContent = "last trade " + signed(d);
+      tone(el.last, d);
+    }
+    prevProfit = s.profit; prevTrades = s.trades;
+    el.next.textContent = s.stake.toFixed(2);
+    el.trades.textContent = s.trades;
+    el.wins.textContent = s.wins;
+    el.losses.textContent = Math.max(0, s.trades - s.wins);
+  }
+  function resetDash(stake) {
+    prevProfit = 0; prevTrades = 0;
+    el.profit.textContent = "0.00"; tone(el.profit, 0);
+    el.last.textContent = ""; tone(el.last, 0);
+    el.next.textContent = stake.toFixed(2);
+    el.trades.textContent = "0"; el.wins.textContent = "0"; el.losses.textContent = "0";
+  }
+  function setStatus(text) {
+    el.status.textContent = text;
+    const reconnecting = /^Reconnecting/.test(text);
+    el.status.classList.toggle("running", !reconnecting && !/^(Idle|Stopped)/.test(text));
+    el.status.classList.toggle("warn", reconnecting);
   }
 
-  // A live quote kept ready for the NEXT stake, so a buy can go out the
-  // instant it's needed (the same cached-proposal approach Manual Trader uses).
-  function openQuote(stake) {
-    const q = { stake: stake, latest: null, updatedAt: null, error: null, unsub: null, socket: socketId() };
+  // ==========================================================
+  // Digit distribution widget (same look + same math as digits.js)
+  // ==========================================================
+  // How many of the newest ticks the percentages use (shared with the Manual Trader widget).
+  const WINDOW_CHOICES = [1000, 500, 250, 100, 50, 25];
+  const WINDOW_KEY = "algotrade.digitWindow";
+  let digitWindow = (function () {
     try {
-      q.unsub = deps.subscribe(proposalReq(stake), function (data) {
-        if (data.error) { q.latest = null; q.error = data.error.message || "quote error"; return; }
-        if (data.proposal) { q.latest = data.proposal; q.updatedAt = now(); q.error = null; }
+      const saved = Number(localStorage.getItem(WINDOW_KEY));
+      return WINDOW_CHOICES.indexOf(saved) !== -1 ? saved : 1000;
+    } catch (_) { return 1000; }
+  })();
+  let history = [];              // last-digit values, most recent last (always up to 1,000 kept)
+  let historySymbol = null;      // which symbol `history` belongs to
+  let cellRefs = [];
+
+  function buildCells() {
+    el.digitsRow.innerHTML = "";
+    cellRefs = [];
+    for (let d = 0; d <= 9; d++) {
+      const cell = document.createElement("div");
+      cell.className = "digit-cell";
+      cell.innerHTML =
+        '<svg viewBox="0 0 44 44" class="digit-ring">' +
+        '<circle cx="22" cy="22" r="18" class="digit-ring-bg" />' +
+        '<circle cx="22" cy="22" r="14" class="digit-fill" fill="none" />' +
+        '<circle cx="22" cy="22" r="18" class="digit-ring-fg" transform="rotate(-90 22 22)" />' +
+        '<text x="22" y="27" class="digit-ring-text">' + d + "</text></svg>" +
+        '<span class="digit-pct">0.0%</span><span class="digit-cursor hidden"></span>';
+      el.digitsRow.appendChild(cell);
+      cellRefs.push({
+        root: cell,
+        ringFg: cell.querySelector(".digit-ring-fg"),
+        fill: cell.querySelector(".digit-fill"),
+        text: cell.querySelector(".digit-ring-text"),
+        pct: cell.querySelector(".digit-pct"),
+        cursor: cell.querySelector(".digit-cursor"),
       });
-    } catch (_) { /* no cached quote: a fresh one is requested at buy time */ }
-    return q;
-  }
-  function closeQuote(q) {
-    if (q && q.unsub) { try { q.unsub(); } catch (_) {} }
-  }
-  function ensureQuote(stake) {
-    lastQuoteStake = stake;
-    if (quote && quote.stake === stake) return;
-    closeQuote(quote);
-    quote = openQuote(stake);
-  }
-
-  let lastTrace = "";   // how the most recent buy was made (shown in the timing line)
-  let pendingFinal = null; // the previous contract's final "sold" update, while we're acting on the early read
-
-  // Deriv refused the buy because of the quote itself (stale / expired / changed price).
-  const QUOTE_PROBLEM = /proposal|price|expired|invalid|not found/i;
-  // Deriv refused the buy because the previous contract isn't fully closed yet.
-  const NOT_READY = /wait|clos|settl|still|already|open|pending/i;
-  const pause = (t) => new Promise((res) => setTimeout(res, t));
-
-  // ---------- Connection resilience ----------
-  // The app's socket can drop and rebuild itself (api.js / auth.js). While that happens the bot PAUSES
-  // and carries on by itself instead of stopping:
-  //  - requests wait for the connection to be back (up to 3 minutes),
-  //  - a request that never left the browser (socket still "CONNECTING") is simply sent again,
-  //  - a lost price request is simply asked again,
-  //  - a BUY whose reply was lost is checked against Deriv's own records first, so it is never bought twice,
-  //  - contract watching and price quotes are re-opened on the new connection.
-  const RECONNECT_WAIT_MS = cfg.reconnectWaitMs || 180000;
-  const isOpen = () => (deps.isOpen ? deps.isOpen() : true);
-  const socketId = () => (deps.socketId ? deps.socketId() : null);
-  const NOT_SENT = /Still in CONNECTING|CLOSING|CLOSED|not open|not connected/i;
-  const trackedContracts = new Set();
-  function stopAbortError() { const e = new Error("Stopped"); e.stopAbort = true; return e; }
-
-  // Shown whenever the connection is down while the bot runs (a watchdog also calls these, so the
-  // screen says "Reconnecting…" even when the bot is only waiting for a contract result).
-  function markDown() {
-    if (reconnectNoticeOn) return;
-    reconnectNoticeOn = true;
-    if (hooks.status) hooks.status("Reconnecting…");
-    log("Connection lost - waiting to reconnect. The bot resumes by itself.");
-  }
-  function markUp() {
-    if (!reconnectNoticeOn) return;
-    reconnectNoticeOn = false;
-    if (hooks.status && lastStatus) hooks.status(lastStatus);
-    log("Reconnected - bot resumed.");
-  }
-
-  async function waitForConnection() {
-    if (isOpen()) return;
-    const t0 = now();
-    markDown();
-    while (!isOpen()) {
-      if (ended) throw stopAbortError();
-      if (now() - t0 > RECONNECT_WAIT_MS) throw new Error("Connection was not restored in time. Check your open positions on Deriv");
-      await pause(250);
     }
-    await pause(400);   // let the new connection settle
-    markUp();
   }
 
-  // ctx is given for BUY requests only: { contract, stake }.
-  async function sendSafe(req, ctx) {
-    const sentEpoch = Math.floor(Date.now() / 1000);
-    let lastErr = null, rl = 0;
-    for (let attempt = 0; attempt < 6; attempt++) {
-      await waitForConnection();
-      if (ctx && !running) throw stopAbortError();                  // Stop was pressed before the buy left
-      try {
-        return await deps.send(req);
-      } catch (e) {
-        lastErr = e;
-        // Deriv's request budget is used up: wait a little (a refused buy was not placed, so asking again is safe).
-        if (isRateLimit(e)) { if (++rl > 8) throw e; noteRateLimit(); await pause(rateWait(rl - 1)); attempt--; continue; }
-        const msg = (e && e.message) || "";
-        if ((e && e.notSent) || NOT_SENT.test(msg)) continue;       // it never left the browser: send it again
-        if (e && (e.connectionLost || e.timeout)) {
-          if (!ctx) continue;                                       // a lost price request is harmless
-          const found = await findPurchasedContract(ctx, sentEpoch);   // did the buy go through?
-          if (found) {
-            log("Connection dropped while buying - the trade had gone through, carrying on with it.");
-            return { buy: { contract_id: found } };
-          }
-          continue;                                                 // confirmed NOT bought: try again
-        }
-        throw e;
+  function renderDigits() {
+    if (cellRefs.length !== 10) buildCells();
+    const shown = history.length > digitWindow ? history.slice(-digitWindow) : history;
+    const total = shown.length || 1;
+    const counts = new Array(10).fill(0);
+    shown.forEach((d) => counts[d]++);
+    const max = Math.max.apply(null, counts);
+    const min = Math.min.apply(null, counts);
+    const last = history.length ? history[history.length - 1] : null;
+    const circumference = 2 * Math.PI * 18;
+
+    for (let d = 0; d <= 9; d++) {
+      const ref = cellRefs[d];
+      const isActive = last === d;
+      if (activeWinSet) {
+        // The bot has a contract open: ring shows win/lose zones, like Manual Trader.
+        const color = activeWinSet.has(d) ? RISE_GREEN : FALL_RED;
+        ref.ringFg.setAttribute("stroke", color);
+        ref.ringFg.setAttribute("stroke-dasharray", circumference);
+        ref.ringFg.setAttribute("stroke-dashoffset", 0);
+        ref.fill.setAttribute("fill", isActive ? color : "none");
+        ref.fill.setAttribute("fill-opacity", "0.85");
+        ref.text.setAttribute("fill", isActive ? "#FFFFFF" : "#1A1D22");
+      } else {
+        const pct = (counts[d] / total) * 100;
+        const isMax = counts[d] === max && max !== min;
+        const isMin = counts[d] === min && max !== min;
+        ref.ringFg.setAttribute("stroke", isMax ? RISE_GREEN : isMin ? FALL_RED : "#D4A94A");
+        ref.ringFg.setAttribute("stroke-dasharray", circumference);
+        ref.ringFg.setAttribute("stroke-dashoffset", circumference - (pct / 100) * circumference);
+        ref.fill.setAttribute("fill", "none");
+        ref.text.setAttribute("fill", "#1A1D22");
       }
+      ref.pct.textContent = ((counts[d] / total) * 100).toFixed(1) + "%";
+      ref.root.classList.toggle("digit-cell-active", isActive);
+      ref.cursor.classList.toggle("hidden", !isActive);
     }
-    throw lastErr || new Error("Connection kept dropping");
   }
 
-  // After a lost buy reply: look in Deriv's open positions and recent closed trades for it.
-  // Only when BOTH lists could be read and neither has it do we treat the buy as "not placed".
-  async function findPurchasedContract(ctx, sentEpoch) {
-    await waitForConnection();
-    await pause(1500);                       // give Deriv a moment to finish anything it was processing
-    const untracked = (id) => !trackedContracts.has(String(id));
-    const recent = (t) => Number(t) >= sentEpoch - 30;
-    const sameStake = (p) => Math.abs(Number(p) - ctx.stake) < 0.005;
-    let checked = 0;
+  async function loadHistoryFor(symbol) {
+    const meta = symbolMeta(symbol);
+    historySymbol = symbol;
+    history = [];
+    renderDigits();
     try {
-      const pf = await sendSafe({ portfolio: 1 });
-      const list = pf.portfolio && pf.portfolio.contracts;
-      if (Array.isArray(list)) {
-        checked++;
-        const hit = list.find((c) => c.contract_type === ctx.contract && sameStake(c.buy_price) && recent(c.purchase_time) && untracked(c.contract_id));
-        if (hit) return hit.contract_id;
+      const res = await derivAPI.send({ ticks_history: symbol, style: "ticks", count: 1000, end: "latest" });
+      const prices = (res.history && res.history.prices) || res.prices || [];
+      if (historySymbol === symbol) {   // user may have switched market meanwhile
+        const places = decimalPlacesFor(meta ? meta.pipSize : 0.01);
+        history = prices.map((p) => Number(Number(p).toFixed(places).slice(-1)));
+        renderDigits();
       }
-    } catch (_) { /* counted as not checked */ }
-    try {
-      const pt = await sendSafe({ profit_table: 1, description: 1, limit: 15, sort: "DESC" });
-      const list = pt.profit_table && pt.profit_table.transactions;
-      if (Array.isArray(list)) {
-        checked++;
-        const hit = list.find((t) => String(t.shortcode || "").indexOf(ctx.contract) === 0 && sameStake(t.buy_price) && recent(t.purchase_time) && untracked(t.contract_id));
-        if (hit) return hit.contract_id;
-      }
-    } catch (_) { /* counted as not checked */ }
-    if (checked < 2) throw new Error("Connection dropped while placing a trade and Deriv's records could not be checked. Check your open positions");
-    return null;
-  }
-
-  async function buyContract(stake) {
-    const parts = [];
-    let cached = quote && quote.stake === stake && quote.socket === socketId() ? quote.latest : null;
-    if (!cached) {
-      parts.push(quote && quote.stake === stake
-        ? (quote.error ? "quote error: " + quote.error : "no quote had arrived yet")
-        : "no quote prepared for this stake");
-    }
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        let proposal = cached;
-        if (proposal) {
-          parts.push("cached quote, " + ms(quote.updatedAt, now()) + " old");
-        } else {
-          const tp = now();
-          const res = await sendSafe(proposalReq(stake));
-          parts.push("fresh quote " + ms(tp, now()));
-          if (!res.proposal) throw new Error((res.error && res.error.message) || "No price available for this trade.");
-          proposal = res.proposal;
-        }
-        const tb = now();
-        const r = await sendSafe({ buy: proposal.id, price: proposal.ask_price }, { contract: cfg.contract, stake: stake });
-        parts.push("buy " + ms(tb, now()));
-        lastTrace = parts.join(" -> ");
-        if (!r.buy || !r.buy.contract_id) throw new Error("Trade did not go through.");
-        return r;
-      } catch (e) {
-        if (e && e.stopAbort) { lastTrace = parts.join(" -> "); throw e; }
-        const msg = (e && e.message) || "";
-        parts.push("buy REJECTED (" + msg + ")");
-        // A rejected buy created no contract, so one retry is safe.
-        if (attempt === 0 && pendingFinal && NOT_READY.test(msg)) {
-          const tw = now();
-          await Promise.race([pendingFinal, pause(5000)]);   // let the previous contract close first
-          parts.push("waited " + ms(tw, now()) + " for the previous contract to close");
-          cached = null;
-          continue;
-        }
-        if (attempt === 0 && cached && QUOTE_PROBLEM.test(msg)) { cached = null; continue; }
-        lastTrace = parts.join(" -> ");
-        throw e;
-      }
+    } catch (err) {
+      console.error("Sniper digits history failed:", err.message);
     }
   }
 
-  // ---------- Rate limits ----------
-  // Deriv shares ONE budget (360 requests a minute) between proposal, proposal_open_contract, buy and sell.
-  // Hitting it must never stop the bot: it waits a little (longer each time) and carries on.
-  const RATE_BACKOFF_MS = cfg.rateBackoffMs || 2000;
-  const isRateLimit = (e) => !!e && (e.code === "RateLimit" || /rate limit/i.test(e.message || ""));
-  const rateWait = (n) => Math.min(RATE_BACKOFF_MS * Math.pow(2, n), 20000);
-  let rateNoticeAt = -1e9;
-  function noteRateLimit() {
-    if (now() - rateNoticeAt > 8000) { rateNoticeAt = now(); log("Deriv's rate limit was reached - slowing down, the bot continues."); }
-  }
-
-  // ---------- One shared stream for ALL open contracts ----------
-  // Instead of one proposal_open_contract request per trade, ONE stream (no contract_id) carries the updates
-  // of every open contract and each trade picks out its own. That saves a budgeted request on every trade.
-  // If the stream does not deliver (checked on the first trade) the bot goes back to one request per trade.
-  // A page can force the old way with: window.DERIV_NO_SHARED_STREAM = true
-  const FEED_WAIT_MS = cfg.feedWaitMs || 4000;     // how long a trade waits for its first update from the stream
-  const STALL_MS = cfg.stallMs || 10000;           // no update for this long -> ask for the contract directly
-  const feed = { on: cfg.sharedFeed !== false, unsub: null, socket: null, retryTimer: null, rl: 0, proven: false };
-  const watchers = new Map();                      // contract_id -> { handle(poc, viaFeed), startOwn() }
-  const dbg = (t) => { if (typeof console !== "undefined" && console.debug) console.debug("[sniper] " + t); };
-
-  function closeFeed() {
-    if (feed.unsub) { try { feed.unsub(); } catch (_) {} }
-    feed.unsub = null; feed.socket = null;
-  }
-  function openFeed() {
-    if (!feed.on || ended) return;
-    const sid = socketId();
-    if (feed.unsub && (sid === null || feed.socket === sid)) return;   // already open on this connection
-    closeFeed();
-    try {
-      feed.unsub = deps.subscribe({ proposal_open_contract: 1 }, function (data) {
-        if (data.error) { feedError(data.error); return; }
-        const poc = data.proposal_open_contract;
-        if (!poc) return;
-        const w = watchers.get(String(poc.contract_id));
-        if (w) w.handle(poc, true);
-      });
-      feed.socket = sid;
-    } catch (_) { feed.unsub = null; feed.socket = null; }              // not ready: retried by the next trade / reconnect
-  }
-  function feedError(err) {
-    closeFeed();
-    if (isRateLimit(err)) {
-      noteRateLimit();
-      if (!feed.retryTimer) feed.retryTimer = setTimeout(function () { feed.retryTimer = null; openFeed(); }, rateWait(feed.rl++));
-    } else {
-      feed.on = false;                                                  // not usable here: one request per trade from now on
-      dbg("shared contract stream unavailable (" + ((err && (err.message || err.code)) || "?") + ") - using one request per trade");
-      watchers.forEach(function (w) { w.startOwn(); });
-    }
-  }
-
-  // ---------- Contract watching ----------
-  const wonOf = (poc) => (poc.status ? poc.status === "won" : Number(poc.profit) > 0);
-
-  // Last digit of the exit tick, read from the contract update itself.
-  const EXIT_DISPLAY_FIELDS = ["exit_tick_display_value", "exit_spot_display_value", "sell_spot_display_value"];
-  const EXIT_RAW_FIELDS = ["exit_tick", "exit_spot", "sell_spot"];
-  function exitDigitOf(poc) {
-    for (let i = 0; i < EXIT_DISPLAY_FIELDS.length; i++) {
-      const v = poc[EXIT_DISPLAY_FIELDS[i]];
-      if (v !== undefined && v !== null && String(v) !== "") return Number(String(v).slice(-1));
-    }
-    for (let i = 0; i < EXIT_RAW_FIELDS.length; i++) {
-      const v = poc[EXIT_RAW_FIELDS[i]];
-      if (v !== undefined && v !== null && String(v) !== "") return Number(Number(v).toFixed(cfg.pipDecimals).slice(-1));
-    }
-    return null;
-  }
-
-  // Diagnostic: shows exactly what Deriv's contract updates contain and when they arrive
-  // (first two contracts of a run only, to keep the log short).
-  let debugContracts = 0;
-  function debugUpdate(poc, openedAt, label) {
-    const f = function (k) { return poc[k] === undefined ? "-" : String(poc[k]); };
-    log("debug " + label + " +" + ms(openedAt, now()) + ": status=" + f("status") + " expired=" + f("is_expired") + " sold=" + f("is_sold") +
-        " exit_tick=" + f("exit_tick") + " exit_display=" + f("exit_tick_display_value") + " sell_spot=" + f("sell_spot") +
-        " tick_count=" + f("tick_count") + " | fields: " + Object.keys(poc).join(","));
-  }
-  const digitLoses = (d) => (cfg.contract === "DIGITOVER" ? !(d > cfg.prediction) : !(d < cfg.prediction));
-
-  // Returns { earlyLoss, final }:
-  //   earlyLoss resolves the moment an update shows the contract has ended on a LOSING digit;
-  //   final resolves with the settled contract (is_sold / status no longer "open").
-  // Updates come from the shared stream (or, as a fallback, this trade's own request).
-  // Re-subscribes if the socket is rebuilt.
-  function watchContract(contractId) {
-    let unsub = null, offRe = null, finished = false, earlySent = false, gotUpdate = false;
-    let resolveEarly, resolveFinal, rejectFinal;
-    let fallbackTimer = null, stallTimer = null, ownTimer = null, ownRl = 0, subSocket = null;
-    const openedAt = now();
-    const doDebug = debugContracts < 2;
-    let tickTrigger = false;
-    debugContracts++;
-    let lastSig = "";
-    const earlyLoss = new Promise((res) => { resolveEarly = res; });
-    const final = new Promise((res, rej) => { resolveFinal = res; rejectFinal = rej; });
-    const cleanup = function () {
-      finished = true;
-      if (unsub) { try { unsub(); } catch (_) {} }
-      if (offRe) offRe();
-      if (fallbackTimer) clearTimeout(fallbackTimer);
-      if (stallTimer) clearTimeout(stallTimer);
-      if (ownTimer) clearTimeout(ownTimer);
-      watchers.delete(String(contractId));
-    };
-    // If updates stop arriving, ask for this contract directly (it may have settled while the stream was quiet).
-    const armStall = function () {
-      if (stallTimer) clearTimeout(stallTimer);
-      stallTimer = setTimeout(function () { stallTimer = null; if (!finished) openOwn(); }, STALL_MS);
-    };
-    // One contract update, from the shared stream or from this trade's own request.
-    const handle = function (poc, viaFeed) {
-      if (finished) return;
-      gotUpdate = true;
-      if (viaFeed) feed.proven = true;
-      armStall();
-      const settled = poc.is_sold || (poc.status && poc.status !== "open");
-      if (doDebug) {
-        const sig = [poc.status, poc.is_expired, poc.is_sold, poc.exit_tick, poc.tick_count].join("|");
-        if (sig !== lastSig) { lastSig = sig; debugUpdate(poc, openedAt, viaFeed ? "stream" : "update"); }   // only when something changed
-      }
-      if (!earlyDisabled && !earlySent && (poc.is_expired || settled)) {
-        const d = exitDigitOf(poc);
-        if (d !== null && digitLoses(d)) { earlySent = true; resolveEarly({ early: true }); }
-      }
-      if (settled) {
-        if (current && current.watch === api) current.kAtFinal = current.ticks.length;
-        cleanup(); resolveFinal(poc);
-      }
-    };
-    // This trade's OWN request (the old way): used as a fallback and after a reconnect.
-    const openOwn = function () {
-      if (finished) return;
-      const sid = socketId();
-      if (unsub && sid !== null && subSocket === sid) return;     // already watching on this connection
-      if (unsub) { try { unsub(); } catch (_) {} unsub = null; }
-      try {
-        unsub = deps.subscribe({ proposal_open_contract: 1, contract_id: contractId }, function (data) {
-          if (finished) return;
-          if (data.error) {
-            if (isRateLimit(data.error)) {                          // too many requests: wait, then ask again
-              noteRateLimit();
-              try { if (unsub) unsub(); } catch (_) {}
-              unsub = null; subSocket = null;
-              if (!ownTimer) ownTimer = setTimeout(function () { ownTimer = null; if (!finished) openOwn(); }, rateWait(ownRl++));
-              return;
-            }
-            cleanup(); return rejectFinal(new Error(data.error.message || "Could not watch the contract."));
-          }
-          if (data.proposal_open_contract) handle(data.proposal_open_contract, false);
-        });
-        subSocket = sid;
-      } catch (e) {
-        // The socket is not ready right now (e.g. still CONNECTING): try again as soon as it is back.
-        unsub = null; subSocket = null;
-        waitForConnection().then(
-          function () { if (!finished) openOwn(); },
-          function (err) { if (!finished) { cleanup(); rejectFinal(err); } });
-      }
-    };
-    const api = {
-      earlyLoss: earlyLoss,
-      final: final,
-      // Fast loss reading: the exit tick has arrived on the tick feed and it is a losing digit.
-      triggerEarly: function () { if (!earlySent && !finished) { earlySent = true; tickTrigger = true; resolveEarly({ early: true, fromTick: true }); } },
-    };
-    watchers.set(String(contractId), { handle: handle, startOwn: openOwn });
-    if (feed.on) {
-      openFeed();
-      fallbackTimer = setTimeout(function () {
-        fallbackTimer = null;
-        if (finished || gotUpdate) return;
-        if (!feed.proven) {                                          // the stream never delivered: stop relying on it
-          feed.on = false; closeFeed();
-          dbg("shared contract stream gave no updates - using one request per trade");
-        }
-        openOwn();
-      }, FEED_WAIT_MS);
-      armStall();
-    } else {
-      openOwn();
-    }
-    // After a reconnect the stream is re-opened and this contract is also asked for directly
-    // (a contract that settled while offline no longer appears in a stream of OPEN contracts).
-    offRe = deps.onReconnect ? deps.onReconnect(function () { openOwn(); }) : null;
-    return api;
-  }
-
-  function end() {
-    if (ended) return;
-    ended = true;
-    running = false;
-    if (offTick) offTick();
-    if (offReconnect) offReconnect();
-    if (watchdog) clearInterval(watchdog);
-    if (feed.retryTimer) clearTimeout(feed.retryTimer);
-    closeFeed();
-    reconnectNoticeOn = false;
-    closeQuote(quote);
-    quote = null;
-    status("Stopped");
-    log("Bot stopped.");
-    if (hooks.finished) hooks.finished();
-    resolveDone();
-  }
-
-  const patternMet = () =>
-    st.window.length === cfg.nDigits &&
-    st.window.every((d) => (cfg.compare === "GTE" ? d >= cfg.threshold : d <= cfg.threshold));
-
-  // ---------- Confirmation digits ----------
-  // With "confirm digits" above 0, the bot does not trade the moment the pattern appears. It arms itself,
-  // then waits until that many digits on the WINNING side of the contract have appeared (any such digits,
-  // not necessarily in a row) and only then trades. This keeps it out of a streak that is still running.
-  // A fresh appearance of the pattern starts the count again. At 0 this is switched off and the bot
-  // trades on the pattern alone, exactly as before.
-  const arm = { on: false, count: 0 };
-  function disarm() { arm.on = false; arm.count = 0; }
-  function confirmedEntry(digit) {
-    if (arm.on && !digitLoses(digit)) {                 // a winning-side digit since the pattern appeared
-      arm.count++;
-      if (arm.count >= cfg.confirmDigits) { disarm(); return true; }
-      status("Confirming " + arm.count + "/" + cfg.confirmDigits);
-    }
-    if (patternMet()) { arm.on = true; arm.count = 0; status("Confirming 0/" + cfg.confirmDigits); }
-    return false;
-  }
-
-  function pushStats() {
-    stats({ trades: st.trades, wins: st.wins, profit: st.profit, stake: st.stake });
-  }
-  // Optional hard stop loss: never place a trade whose stake could take the total loss past the stop loss.
-  function wouldBreachStop() {
-    return !!cfg.hardStop && round2(st.profit - st.stake) < -cfg.sl;
-  }
-  function limitHit() {
-    if (st.profit >= cfg.tp) return "Take profit reached. Stopped.";
-    if (st.profit <= -cfg.sl) return "Stop loss reached. Stopped.";
-    return null;
-  }
-
-  // Applies one trade's result to the martingale / recovery state.
-  //   - Pattern trade loses (not locked)  -> recovery mode ON (up to maxRecovery trades, right away).
-  //   - Recovery trades all lose          -> recovery OFF and LOCKED: only pattern trades until one wins.
-  //   - Pattern trade loses while locked  -> stays pattern-only (stake keeps growing, no recovery).
-  //   - Any win                           -> stake reset, recovery unlocked (can start again on the next loss).
-  function applyOutcome(won, profit) {
-    st.trades++;
-    st.profit = round2(st.profit + profit);
-    if (won) {
-      const wasLocked = st.recoveryLocked;
-      st.wins++; st.stake = cfg.stake; st.recovery = false; st.recCount = 0; st.recoveryLocked = false;
-      return wasLocked ? "Pattern trade won - stake reset and recovery mode is armed again." : null;
-    }
-    const wasRecovery = st.recovery;
-    st.stake = round2(st.stake * cfg.mult); // martingale: only a win resets it
-    if (wasRecovery) {
-      st.recCount++;
-      if (st.recCount >= cfg.maxRecovery) {
-        st.recovery = false; st.recCount = 0;
-        if (cfg.cooldown) {
-          // Cooldown: act as if starting again. The stake goes back to the starting stake and recovery stays
-          // available, so the next pattern trade (at the starting stake) can start martingale + recovery again.
-          // Profit/loss, trade count and everything else recorded so far are left as they are.
-          st.stake = cfg.stake; st.recoveryLocked = false;
-          return "Recovery limit reached - cooldown: stake reset to the starting stake, starting again.";
-        }
-        st.recoveryLocked = true;
-        return "Recovery limit reached - pattern trades only, recovery mode stays off until a pattern trade wins (stake kept).";
-      }
-    } else if (!st.recoveryLocked) {
-      st.recovery = true; st.recCount = 0;
-    }
-    return null;
-  }
-
-  // Fast loss reading: learns how many ticks after the buy the result appears, and switches on only
-  // after the same tick position has predicted the real outcome several trades in a row.
-  function learnFromFinal(rec, actualLoss) {
-    if (!cfg.fastRead || !rec) return;
-    if (fast.enabled) {
-      const t = rec.ticks[fast.k - 1];
-      if (t && digitLoses(t.digit) !== actualLoss) {
-        fast.enabled = false; fast.streak = 0; fast.need = 10;
-        log("Fast loss reading switched off: tick " + fast.k + " did not match Deriv's result. It will re-learn.");
-      }
-      return;
-    }
-    const k = rec.kAtFinal;
-    const t = k ? rec.ticks[k - 1] : null;
-    if (!t) { fast.streak = 0; return; }
-    if (digitLoses(t.digit) === actualLoss) {
-      if (k === fast.k) fast.streak++; else { fast.k = k; fast.streak = 1; }
-    } else { fast.k = null; fast.streak = 0; }
-    if (fast.streak >= fast.need) {
-      fast.enabled = true;
-      log("Fast loss reading ON: the result is decided by tick " + fast.k + " after the buy (confirmed on " + fast.streak + " trades in a row).");
-    }
-  }
-
-  // The early (exit-digit) read said LOSS; this checks it against Deriv's final result.
-  function reconcile(poc, stakeAtTrade, seenAt, fromTick, rec) {
-    const actual = Number(poc.profit) || 0;
-    log("timing: Deriv's final 'sold' update came " + ms(seenAt, now()) + " after the loss was seen from the exit tick.");
-    if (!wonOf(poc)) learnFromFinal(rec, true);
-    if (wonOf(poc)) {
-      earlyDisabled = true;
-      if (fromTick) { fast.enabled = false; fast.streak = 0; fast.need = 10; }
-      st.wins++;
-      st.profit = round2(st.profit + actual + stakeAtTrade); // replace the assumed loss with the real result
-      log(fromTick
-        ? "WARNING: fast loss reading was wrong on that trade (it was a WIN). It is switched off and will re-learn."
-        : "WARNING: that trade was actually a WIN. Early reading switched off for the rest of this run.");
-      pushStats();
-    } else if (Math.abs(actual + stakeAtTrade) > 0.005) {
-      st.profit = round2(st.profit + actual + stakeAtTrade);
-      pushStats();
-    }
-    const hit = limitHit();
-    if (hit && running) { log(hit); running = false; if (!busy) end(); }
-  }
-
-  async function cycle(tickAt) {
-    busy = true;
-    disarm();
-    let nextBuy = null;   // a recovery buy already sent, waiting to be tracked
-    let lossSeenAt = null, lossExitTickAt = null, lossResultLag = 0;
-    try {
-      do {
-        status(st.recovery ? "Recovery trade" : "Pattern trade");
-        const stakeNow = st.stake;
-        const sentAt = nextBuy ? nextBuy.sentAt : now();
-        const bought = await (nextBuy ? nextBuy.promise : buyContract(stakeNow));
-        nextBuy = null;
-        const confirmedAt = now();
-        trackedContracts.add(String(bought.buy.contract_id));
-        log(lossSeenAt !== null
-          ? "timing: loss seen -> next buy confirmed in " + ms(lossSeenAt, confirmedAt) + " [" + lastTrace + "]"
-          : (tickAt !== null ? "timing: pattern tick -> buy confirmed in " + ms(tickAt, confirmedAt) + " [" + lastTrace + "]" : ""));
-        tickAt = null;
-        if (lossSeenAt !== null && lossExitTickAt !== null && tickInterval !== null) {
-          const afterExit = confirmedAt - lossExitTickAt;
-          const spare = Math.round(tickInterval - afterExit);
-          log("speed: result reached us " + Math.round(lossResultLag) + " ms after the exit tick; the next buy was confirmed " + Math.round(afterExit) +
-              " ms after it; ticks come every ~" + Math.round(tickInterval) + " ms -> " +
-              (spare > 0 ? "lands before the next tick (" + spare + " ms to spare)." : "MISSED the next tick by " + (-spare) + " ms."));
-        }
-        lossSeenAt = null; lossExitTickAt = null;
-
-        closeQuote(quote); // that quote is used up
-        quote = null;
-        // While this contract is open, get the quote for the stake we'd use after a loss.
-        ensureQuote(round2(stakeNow * cfg.mult));
-        if (hooks.bought) hooks.bought({ stake: stakeNow, contractId: bought.buy.contract_id });
-
-        const watch = watchContract(bought.buy.contract_id);
-        current = { confirmedAt: confirmedAt, ticks: [], watch: watch, firedEarly: false, kAtFinal: null };
-        const rec = current;
-        const first = await Promise.race([watch.earlyLoss, watch.final]);
-        const seenAt = now();
-        const exitTickAt = lastTickAt;   // the most recent tick before the result reached us
-        let won, profit, provisional = false;
-        if (first && first.early) {
-          won = false; profit = -stakeNow; provisional = true;
-          const finalP = watch.final.then(
-            function (poc) { if (pendingFinal === finalP) pendingFinal = null; reconcile(poc, stakeNow, seenAt, first.fromTick, rec); },
-            function () { if (pendingFinal === finalP) pendingFinal = null; });
-          pendingFinal = finalP;
-        } else {
-          won = wonOf(first);
-          profit = Number(first.profit) || 0;
-          learnFromFinal(rec, !won);
-        }
-
-        const note = applyOutcome(won, profit);
-        let hit = limitHit();
-        if (!hit && wouldBreachStop()) {
-          hit = "Next stake " + st.stake.toFixed(2) + " could take the loss past the stop loss (" + cfg.sl + "). Stopped.";
-        }
-        if (hit) running = false;
-
-        // Start the next buy BEFORE any screen/log work, so nothing delays it.
-        if (running && st.recovery) {
-          nextBuy = { promise: buyContract(st.stake), sentAt: now() };
-          lossSeenAt = seenAt;
-          lossExitTickAt = exitTickAt;
-          lossResultLag = seenAt - exitTickAt;
-        }
-
-        if (hooks.settled) hooks.settled();
-        pushStats();
-        log((won ? "WON " : "LOST ") + profit.toFixed(2) + (provisional ? " (from exit tick)" : "") +
-            " | total " + st.profit.toFixed(2) + " | next stake " + st.stake.toFixed(2));
-        if (note) log(note);
-        if (hit) log(hit);
-        else if (!nextBuy) ensureQuote(st.stake); // keep a live quote ready for whatever comes next
-        // Recovery loop: the next buy is already on its way — track it, no waiting for a tick.
-      } while (nextBuy || (running && st.recovery));
-    } catch (e) {
-      if (!(e && e.stopAbort)) log("Error: " + ((e && e.message) || "unknown") + " - bot stopped.");
-      running = false;
-    }
-    busy = false;
-    if (running) status("Waiting for pattern"); else end();
-  }
-
-  // After a reconnect: ticks were missed (a pattern must be built from fresh digits), the learned
-  // exit-tick position can't be trusted, and the old price quote belonged to the old connection.
-  offReconnect = deps.onReconnect ? deps.onReconnect(function () {
-    st.window.length = 0;
-    disarm();
-    fast.enabled = false; fast.streak = 0;
-    quote = null;
-    if (lastQuoteStake !== null) ensureQuote(lastQuoteStake);
-    feed.unsub = null; feed.socket = null;       // the old stream died with the old connection
-    openFeed();
-  }) : null;
-
-  watchdog = deps.isOpen ? setInterval(function () {
-    if (ended) return;
-    if (!isOpen()) markDown(); else if (reconnectNoticeOn) markUp();
-  }, 500) : null;
-
-  openFeed();
-
-  offTick = deps.onTick(function (t) {
-    if (ended || t.symbol !== cfg.symbol) return;
-    const arrivedAt = now();
-    const digit = Number(Number(t.quote).toFixed(cfg.pipDecimals).slice(-1));
-    if (lastTickAt !== null) {
-      const gap = arrivedAt - lastTickAt;
-      if (gap > 50 && gap < 10000) tickInterval = tickInterval === null ? gap : tickInterval * 0.7 + gap * 0.3;
-    }
-    lastTickAt = arrivedAt;
-    if (current) {
-      current.ticks.push({ digit: digit, at: arrivedAt });
-      if (cfg.fastRead && fast.enabled && !current.firedEarly && current.ticks.length === fast.k && digitLoses(digit)) {
-        current.firedEarly = true;
-        current.watch.triggerEarly();
-      }
-    }
-    st.window.push(digit);
-    if (st.window.length > cfg.nDigits) st.window.shift();
-    if (hooks.tickDigit) hooks.tickDigit(digit);
-    if (running && !busy) {
-      const go = cfg.confirmDigits > 0 ? confirmedEntry(digit) : patternMet();
-      if (go) cycle(arrivedAt);
-    }
+  // Live ticks: shared broadcast from markets.js (no new subscription).
+  document.addEventListener("algotrade:tick", (e) => {
+    if (e.detail.symbol !== historySymbol) return;
+    // Same behaviour as the Manual Trader widget: the exit tick is drawn with its win/lose colours,
+    // and only the tick AFTER it draws the normal percentages again.
+    if (clearAfterTick) { activeWinSet = null; clearAfterTick = false; }
+    const meta = symbolMeta(historySymbol);
+    const places = decimalPlacesFor(meta ? meta.pipSize : 0.01);
+    history.push(Number(Number(e.detail.quote).toFixed(places).slice(-1)));
+    if (history.length > 1000) history.shift();
+    if (tabIsVisible()) renderDigits();
   });
 
-  ensureQuote(st.stake);
-  status("Waiting for pattern");
-  stats({ trades: 0, wins: 0, profit: 0, stake: st.stake });
-  log("Started: waiting for " + cfg.nDigits + " digits " + (cfg.compare === "GTE" ? ">=" : "<=") + " " + cfg.threshold +
-      ", then " + cfg.contract + " " + cfg.prediction + ".");
+  // ==========================================================
+  // Market dropdown (shared selection — see header note)
+  // ==========================================================
+  function populateMarketSelect() {
+    const synth = (AppState.allSymbols || []).filter(isSynthetic);
+    el.marketSelect.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Choose a synthetic index…";
+    el.marketSelect.appendChild(placeholder);
+    synth.forEach((s) => {
+      const opt = document.createElement("option");
+      opt.value = s.symbol;
+      opt.textContent = s.displayName;
+      el.marketSelect.appendChild(opt);
+    });
+    syncSelection();
+  }
 
-  return {
-    done: done,
-    stop: function () {
-      if (!running) return;
-      running = false;
-      if (!busy) end();
-      else { status("Stopping…"); log("Stop requested - waiting for the open contract to settle."); }
+  function syncSelection() {
+    const meta = symbolMeta(AppState.selectedSymbol);
+    const ok = isSynthetic(meta);
+    el.marketSelect.value = ok ? meta.symbol : "";
+    el.marketLine.textContent = ok ? meta.displayName : "No synthetic index selected";
+    el.digitsNote.classList.toggle("hidden", ok);
+    el.digitsLabel.textContent = "Last digit distribution — last " + digitWindow.toLocaleString("en-US") + " ticks" +
+      (ok ? " · " + meta.displayName : "");
+    if (ok && tabIsVisible() && historySymbol !== meta.symbol) loadHistoryFor(meta.symbol);
+    if (!ok) { history = []; historySymbol = null; renderDigits(); }
+  }
+
+  function setWindow(n, announce) {
+    el.windowSelect.value = String(digitWindow);
+    if (WINDOW_CHOICES.indexOf(n) === -1 || n === digitWindow) return;
+    digitWindow = n;
+    try { localStorage.setItem(WINDOW_KEY, String(n)); } catch (_) { /* setting just isn't remembered */ }
+    el.windowSelect.value = String(n);
+    syncSelection();            // refreshes the label
+    renderDigits();
+    if (announce) document.dispatchEvent(new CustomEvent("algotrade:digit-window-changed", { detail: { count: n } }));
+  }
+  el.windowSelect.value = String(digitWindow);
+  el.windowSelect.addEventListener("change", () => setWindow(Number(el.windowSelect.value), true));
+  document.addEventListener("algotrade:digit-window-changed", (e) => setWindow(e.detail.count, false));
+
+  el.marketSelect.addEventListener("change", () => {
+    const symbol = el.marketSelect.value;
+    if (!symbol || session) return;
+    const meta = symbolMeta(symbol);
+    if (typeof selectSymbol === "function") selectSymbol(symbol, meta ? meta.displayName : symbol);
+  });
+
+  document.addEventListener("algotrade:symbol-selected", () => {
+    if (!(AppState.allSymbols || []).length) return;
+    if (el.marketSelect.options.length <= 1) populateMarketSelect(); else syncSelection();
+  });
+
+  // ==========================================================
+  // Settings -> config
+  // ==========================================================
+  function readConfig() {
+    const num = (inp) => Number(inp.value);
+    const meta = symbolMeta(AppState.selectedSymbol);
+    if (!isSynthetic(meta)) { log("Choose a synthetic index in the market dropdown first (digits contracts only work on those)."); return null; }
+
+    const cfg = {
+      currency: activeCurrency(),
+      symbol: meta.symbol,
+      pipDecimals: decimalPlacesFor(meta.pipSize),
+      contract: el.contract.value,
+      prediction: num(el.prediction),
+      duration: num(el.duration),
+      nDigits: num(el.nDigits),
+      confirmDigits: num(el.confirm),
+      compare: el.compare.value,
+      threshold: num(el.threshold),
+      maxRecovery: num(el.maxRec),
+      stake: num(el.stake),
+      mult: num(el.mult),
+      tp: num(el.tp),
+      sl: num(el.sl),
+      hardStop: !!el.hardStop.checked,
+      fastRead: !!el.fastRead.checked,
+      cooldown: !!el.cooldown.checked,
+      sharedFeed: !window.DERIV_NO_SHARED_STREAM,
+    };
+    const over = cfg.contract === "DIGITOVER";
+    const isDigit = (v) => Number.isInteger(v) && v >= 0 && v <= 9;
+    let err = null;
+    if (!(cfg.stake >= 0.35)) err = "Stake must be at least 0.35.";
+    else if (!isDigit(cfg.prediction) || cfg.prediction < (over ? 0 : 1) || cfg.prediction > (over ? 8 : 9))
+      err = over ? "Digit Over needs a prediction from 0 to 8." : "Digit Under needs a prediction from 1 to 9.";
+    else if (!isDigit(cfg.threshold)) err = "Pattern digit must be from 0 to 9.";
+    else if (!Number.isInteger(cfg.nDigits) || cfg.nDigits < 1 || cfg.nDigits > 10) err = "Digits in a row must be a whole number from 1 to 10.";
+    else if (!Number.isInteger(cfg.confirmDigits) || cfg.confirmDigits < 0 || cfg.confirmDigits > 10) err = "Confirm digits must be a whole number from 0 to 10 (0 = off).";
+    else if (!Number.isInteger(cfg.duration) || cfg.duration < 1) err = "Duration must be at least 1 tick.";
+    else if (!Number.isInteger(cfg.maxRecovery) || cfg.maxRecovery < 1) err = "Max recovery trades must be at least 1.";
+    else if (!(cfg.mult >= 1)) err = "Multiplier must be 1 or more.";
+    else if (!(cfg.tp > 0) || !(cfg.sl > 0)) err = "Take profit and stop loss must be above 0.";
+    else if (cfg.hardStop && cfg.stake > cfg.sl) err = "Stake is larger than the stop loss.";
+    if (err) { log("Check settings: " + err); return null; }
+    return cfg;
+  }
+
+  // ==========================================================
+  // Run / Stop
+  // ==========================================================
+  // Talks to the app's shared connection (api.js) and tells the bot WHY a request failed, so it can wait out
+  // a reconnect instead of stopping:
+  //   notSent        - the socket was not open, nothing left the browser (safe to send again)
+  //   connectionLost - the socket died while we waited for the reply (the request may or may not have arrived)
+  //   timeout        - no reply within 20 s
+  // Deriv shares one budget (360 requests a minute) between proposal, proposal_open_contract, buy and sell.
+  // This keeps a running count of what THIS bot sends and mentions it in the browser console when it is high.
+  const BUDGETED = { proposal: 1, proposal_open_contract: 1, buy: 1, sell: 1 };
+  const stamps = [];
+  let lastCountNote = 0;
+  function countRequest(req) {
+    if (!BUDGETED[Object.keys(req)[0]]) return;
+    const t = Date.now();
+    stamps.push(t);
+    while (stamps.length && t - stamps[0] > 60000) stamps.shift();
+    if (stamps.length >= 200 && t - lastCountNote > 20000) {
+      lastCountNote = t;
+      console.debug("[sniper] about " + stamps.length + " budgeted requests in the last minute (Deriv's limit is 360)");
+    }
+  }
+  const isOpen = () => !!derivAPI.ws && derivAPI.ws.readyState === WebSocket.OPEN;
+  function sendWithDiagnosis(req) {
+    return new Promise((resolve, reject) => {
+      if (!isOpen()) { const e = new Error("Connection is not open"); e.notSent = true; reject(e); return; }
+      const ws = derivAPI.ws;
+      let done = false, watch = null, timer = null;
+      const finish = (fn, v) => { if (done) return; done = true; clearInterval(watch); clearTimeout(timer); fn(v); };
+      watch = setInterval(() => {
+        if (derivAPI.ws !== ws || ws.readyState !== WebSocket.OPEN) {
+          const e = new Error("Connection lost before the reply arrived"); e.connectionLost = true; finish(reject, e);
+        }
+      }, 200);
+      timer = setTimeout(() => { const e = new Error("No reply from Deriv within 20 seconds"); e.timeout = true; finish(reject, e); }, 20000);
+      countRequest(req);
+      derivAPI.send(req).then((r) => finish(resolve, r), (e) => finish(reject, e));
+    });
+  }
+
+  const deps = {
+    isOpen: isOpen,
+    socketId: () => derivAPI.ws,
+    send: sendWithDiagnosis,
+    subscribe: (req, cb) => { countRequest(req); return derivAPI.subscribe(req, cb); },
+    onTick: (fn) => {
+      const h = (e) => fn(e.detail);
+      document.addEventListener("algotrade:tick", h);
+      return () => document.removeEventListener("algotrade:tick", h);
+    },
+    onReconnect: (fn) => {
+      const h = () => fn();
+      document.addEventListener("algotrade:reconnected", h);
+      return () => document.removeEventListener("algotrade:reconnected", h);
     },
   };
-}
 
-if (typeof module !== "undefined") module.exports = { startSniperEngine };
+  // The Even/Odd bot (sniper-evenodd.js) shares this tab. Only one sniper bot may run at a time.
+  let otherRunning = false;
+  document.addEventListener("algotrade:sniper-run-state", (e) => {
+    if (e.detail.bot === "overunder") return;
+    otherRunning = !!e.detail.running;
+    setRunningUI(!!session);
+  });
+  // The Even/Odd bot colours the digit widget through this event while its contract is open.
+  document.addEventListener("algotrade:sniper-contract", (e) => {
+    if (e.detail.open) { activeWinSet = new Set(e.detail.winDigits); clearAfterTick = false; renderDigits(); }
+    else clearAfterTick = true;
+  });
+  function announceRunState(on) {
+    document.dispatchEvent(new CustomEvent("algotrade:sniper-run-state", { detail: { bot: "overunder", running: on } }));
+  }
+
+  function setRunningUI(on) {
+    el.run.disabled = on || otherRunning;
+    el.run.title = otherRunning && !on ? "The Even/Odd bot is running. Stop it first." : "";
+    el.stop.disabled = !on;
+    const lock = on || otherRunning;
+    el.marketSelect.disabled = lock;
+    el.marketSelect.title = lock ? "Stop the running bot to change market" : "";
+    [el.contract, el.prediction, el.duration, el.nDigits, el.confirm, el.compare, el.threshold,
+     el.maxRec, el.stake, el.mult, el.tp, el.sl, el.hardStop, el.fastRead, el.cooldown].forEach((x) => { x.disabled = on; });
+  }
+
+  function winSetFor(contract, prediction) {
+    const win = new Set();
+    for (let d = 0; d <= 9; d++) {
+      if (contract === "DIGITOVER" ? d > prediction : d < prediction) win.add(d);
+    }
+    return win;
+  }
+
+  el.run.addEventListener("click", () => {
+    if (session) return;
+    if (otherRunning) { log("The Even/Odd bot is running. Stop it first."); return; }
+    if (!derivAPI.ws || derivAPI.ws.readyState !== WebSocket.OPEN) { log("Not connected to Deriv yet."); return; }
+    const cfg = readConfig();
+    if (!cfg) return;
+
+    const acct = activeAccount();
+    if (acct && acct.account_type !== "demo") {
+      if (!confirm("This bot will run on your REAL account and place real trades. Continue?")) return;
+    }
+
+    clearMsg();
+    resetDash(cfg.stake);
+    setRunningUI(true);
+    session = startSniperEngine(deps, cfg, {
+      log: log,
+      status: setStatus,
+      stats: paintStats,
+      bought: () => { activeWinSet = winSetFor(cfg.contract, cfg.prediction); clearAfterTick = false; renderDigits(); },
+      settled: () => { clearAfterTick = true; },
+      finished: () => { clearAfterTick = true; session = null; announceRunState(false); setRunningUI(false); },
+    });
+    announceRunState(true);
+  });
+
+  el.stop.addEventListener("click", () => { if (session) session.stop(); });
+
+  // Switching accounts rebuilds the session — never leave a bot running across that.
+  document.addEventListener("algotrade:account-ready", () => {
+    if (session) { log("Account changed - bot stopped."); session.stop(); }
+    updateBanner();
+  });
+
+  function updateBanner() {
+    const a = activeAccount();
+    if (!a) { el.banner.textContent = ""; el.banner.className = "sniper-banner hidden"; return; }
+    const demo = a.account_type === "demo";
+    el.banner.textContent = demo ? "Demo account" : "Real account — trades use real money";
+    el.banner.className = "sniper-banner " + (demo ? "sniper-banner-demo" : "sniper-banner-real");
+  }
+
+  // ---------- tab lifecycle ----------
+  document.addEventListener("algotrade:tab-shown", (e) => {
+    if (e.detail.tab !== "sniper-trader") return;
+    updateBanner();
+    if ((AppState.allSymbols || []).length) populateMarketSelect();
+    renderDigits();
+  });
+
+  // After a reconnect the tick feed resumes by itself (markets.js); reload the history to cover the gap.
+  document.addEventListener("algotrade:reconnected", () => {
+    if (historySymbol && tabIsVisible()) loadHistoryFor(historySymbol);
+  });
+
+  // ---------- layout safety ----------
+  // Tells the stylesheet when this tab is on screen, so sniper.css can keep the
+  // page footer below the content (see "Layout safety" in sniper.css).
+  const accountScreen = $("account-screen");
+  function syncLayoutClass() {
+    const on = !tabEl.classList.contains("hidden") && !!accountScreen && !accountScreen.classList.contains("hidden");
+    document.body.classList.toggle("sniper-active", on);
+  }
+  const layoutObserver = new MutationObserver(syncLayoutClass);
+  layoutObserver.observe(tabEl, { attributes: true, attributeFilter: ["class"] });
+  if (accountScreen) layoutObserver.observe(accountScreen, { attributes: true, attributeFilter: ["class"] });
+  syncLayoutClass();
+
+  buildCells();
+  renderDigits();
+})();
