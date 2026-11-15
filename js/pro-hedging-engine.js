@@ -12,7 +12,7 @@
 //             Over 3 wins, Under 6 loses -> recover ONLY Under 6, with Under 7.
 //             Under 6 wins, Over 3 loses -> recover ONLY Over 3, with Over 2.
 //             A winning contract is never recovered.
-//   RECOVERY  0. (optional, first recovery trade only) PATTERN: wait for AT LEAST P
+//   RECOVERY  0. (optional, before EVERY recovery trade) PATTERN: wait for AT LEAST P
 //                LOSING digits in a row - digits that lose the recovery contract
 //                (Over 2: 0-2, Under 7: 7-9). More than P in a row is fine (the run
 //                just carries on); a digit that is not losing before P is reached
@@ -26,7 +26,9 @@
 //             3. Win  -> recovery over, martingale reset.
 //                Loss -> (immediate recovery ON) buy the SAME contract again
 //                        at once, no digit confirmation, until a win or the
-//                        maximum recovery trades; (OFF) wait for K digits again.
+//                        maximum recovery trades; (OFF) the WHOLE sequence starts again
+//                        (P losing digits, then K confirm digits) before the next
+//                        recovery trade - after every lost recovery trade.
 //             The recovery barrier never changes during a cycle.
 //   RISK      Stop loss / take profit use the NET result of every contract,
 //             recovery included. Balance is checked before every purchase,
@@ -672,8 +674,10 @@ function startHedgeEngine(deps, cfg, hooks) {
           emitState();
           continue;
         }
-        // Immediate recovery is off: wait for K qualifying digits again.
-        leg.phase = "confirm"; leg.count = 0; leg.placing = false;
+        // Immediate recovery is off: the whole recovery sequence starts again for the next recovery trade -
+        // P losing digits in a row (if the pattern is on), then K qualifying digits in a row.
+        leg.phase = PAT > 0 ? "pattern" : "confirm"; leg.patCount = 0; leg.count = 0; leg.placing = false;
+        log("Recovery trade lost - starting the sequence again" + (PAT > 0 ? ": " + PAT + " losing digit(s) in a row, then " : ": ") + cfg.recConfirm + " qualifying digit(s) in a row.");
         refreshQuotes();
         emitState();
         return;
@@ -698,7 +702,7 @@ function startHedgeEngine(deps, cfg, hooks) {
     if (running) {
       if (rec) {
         if (rec.phase === "pattern" && !rec.placing) {
-          // Pattern (first recovery trade only): P LOSING digits in a row - digits that lose the recovery contract.
+          // Pattern (before EVERY recovery trade): P LOSING digits in a row - digits that lose the recovery contract.
           // Any other digit starts the pattern count again. Once met, the confirm digits are checked from the NEXT digit.
           if (!qualifies(rec, digit)) rec.patCount++; else rec.patCount = 0;
           if (rec.patCount >= PAT) {
@@ -710,8 +714,8 @@ function startHedgeEngine(deps, cfg, hooks) {
             // Recovery confirmation: K qualifying digits in a row (the first one after the losing run is digit 1).
             rec.count++;
             if (rec.count >= cfg.recConfirm) { rec.placing = true; runRecovery(rec); }
-          } else if (PAT > 0 && rec.trades === 0) {
-            // A LOSING digit (first recovery trade, pattern on).
+          } else if (PAT > 0) {
+            // A LOSING digit (pattern on) - applies to every recovery trade, not only the first.
             if (rec.count === 0) {
               // No confirm digit yet: it is simply the losing run carrying on (the pattern is "at least P"), so nothing restarts.
               rec.patCount++;
@@ -725,7 +729,7 @@ function startHedgeEngine(deps, cfg, hooks) {
               }
             }
           } else {
-            rec.count = 0;                    // pattern off / not the first trade: just restart the confirm count
+            rec.count = 0;                    // pattern off: just restart the confirm count
           }
         }
       } else if (st.mode === "waiting" && !entryBusy && recQueue.length === 0) {
