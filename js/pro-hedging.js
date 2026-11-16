@@ -22,7 +22,7 @@
   const el = {
     marketLine: $("ph-market-line"), banner: $("ph-banner"), marketSelect: $("ph-market-select"),
     stake: $("ph-stake"), duration: $("ph-duration"), nDigits: $("ph-ndigits"), tp: $("ph-tp"), sl: $("ph-sl"),
-    pattern: $("ph-pattern"), confirm: $("ph-confirm"), mult: $("ph-mult"), maxRec: $("ph-maxrec"), recDur: $("ph-recdur"),
+    pattern: $("ph-pattern"), confirm: $("ph-confirm"), strengthPattern: $("ph-strength-pattern"), strengthConfirm: $("ph-strength-confirm"), mult: $("ph-mult"), maxRec: $("ph-maxrec"), recDur: $("ph-recdur"),
     maxStake: $("ph-maxstake"), afterLimit: $("ph-afterlimit"),
     recovery: $("ph-recovery"), immediate: $("ph-immediate"), fast: $("ph-fast"), hardStop: $("ph-hardstop"),
     preview: $("ph-preview"), run: $("ph-run"), stop: $("ph-stop"), msg: $("ph-msg"),
@@ -37,7 +37,7 @@
     digitsLabel: $("ph-digits-label"), digitsNote: $("ph-digits-note"), digitsRow: $("ph-digits-row"),
   };
 
-  const SETTINGS = [el.marketSelect, el.widgetMarket, el.stake, el.duration, el.nDigits, el.tp, el.sl, el.pattern, el.confirm, el.mult, el.maxRec, el.recDur,
+  const SETTINGS = [el.marketSelect, el.widgetMarket, el.stake, el.duration, el.nDigits, el.tp, el.sl, el.pattern, el.confirm, el.strengthPattern, el.strengthConfirm, el.mult, el.maxRec, el.recDur,
     el.maxStake, el.afterLimit, el.recovery, el.immediate, el.fast, el.hardStop];
 
   let session = null;
@@ -278,7 +278,7 @@
       currency: activeCurrency(), symbol: meta.symbol, pipDecimals: decimalPlacesFor(meta.pipSize),
       stake: num(el.stake), duration: num(el.duration), nEntry: num(el.nDigits), tp: num(el.tp), sl: num(el.sl),
       recoveryEnabled: !!el.recovery.checked, immediate: !!el.immediate.checked, fastRecovery: !!el.fast.checked, hardStop: !!el.hardStop.checked,
-      recPattern: num(el.pattern), recConfirm: num(el.confirm), mult: num(el.mult), maxRec: num(el.maxRec), recDuration: num(el.recDur),
+      recPattern: num(el.pattern), recConfirm: num(el.confirm), recStrengthPattern: num(el.strengthPattern), recStrengthConfirm: num(el.strengthConfirm), mult: num(el.mult), maxRec: num(el.maxRec), recDuration: num(el.recDur),
       maxStake: num(el.maxStake), afterLimit: el.afterLimit.value,
     };
     let err = null;
@@ -288,6 +288,8 @@
     else if (!(cfg.tp > 0) || !(cfg.sl > 0)) err = "Take profit and stop loss must be above 0.";
     else if (!int(el.pattern) || cfg.recPattern < 0 || cfg.recPattern > 20) err = "Losing digits in a row must be a whole number from 0 to 20 (0 = off).";
     else if (!int(el.confirm) || cfg.recConfirm < 1 || cfg.recConfirm > 20) err = "Confirm digits must be a whole number from 1 to 20.";
+    else if (!int(el.strengthPattern) || cfg.recStrengthPattern < 0 || cfg.recStrengthPattern > 20) err = "Recovery strength losing digits must be a whole number from 0 to 20 (0 = off).";
+    else if (!int(el.strengthConfirm) || cfg.recStrengthConfirm < 1 || cfg.recStrengthConfirm > 20) err = "Recovery strength confirm digits must be a whole number from 1 to 20.";
     else if (!(cfg.mult >= 1 && cfg.mult <= 10)) err = "Multiplier must be between 1 and 10.";
     else if (!int(el.maxRec) || cfg.maxRec < 1 || cfg.maxRec > 30) err = "Max recovery trades must be a whole number from 1 to 30.";
     else if (!int(el.recDur) || cfg.recDuration < 1 || cfg.recDuration > 10) err = "Recovery ticks must be a whole number from 1 to 10.";
