@@ -115,8 +115,8 @@ function startHedge2Engine(deps, cfg, hooks) {
       mode: st.mode, running: running, reconnecting: reconnectNoticeOn,
       symbol: cfg.symbol, lastDigit: lastDigit,
       entrySkipLeft: st.mode === "waiting" ? st.skipLeft : 0, entrySkipNeed: st.skipNeed,
-      patCount: rec && rec.phase === "pattern" ? Math.min(rec.patCount, PAT) : 0, patNeed: PAT,
-      recCount: rec && rec.phase === "confirm" ? Math.min(rec.count, cfg.recConfirm) : 0, recNeed: cfg.recConfirm,
+      patCount: rec && rec.phase === "pattern" ? Math.min(rec.patCount, rec.patternNeed) : 0, patNeed: rec ? rec.patternNeed : PAT,
+      recCount: rec && rec.phase === "confirm" ? Math.min(rec.count, rec.confirmNeed) : 0, recNeed: rec ? rec.confirmNeed : cfg.recConfirm,
       recPhase: rec ? rec.phase : null,
       recContract: rec ? rec.label : null,
       recTrades: rec ? rec.trades : 0, maxRec: cfg.maxRec,
@@ -483,7 +483,7 @@ function startHedge2Engine(deps, cfg, hooks) {
   function newLeg(side) {
     return { side: side, from: side === "OVER" ? OVER.name + " " + OVER.barrier : UNDER.name + " " + UNDER.barrier,
       contract: REC.contract, barrier: REC.barrier, label: REC.name + " " + REC.barrier,
-      level: 0, trades: 0, phase: PAT > 0 ? "pattern" : "confirm", patCount: 0, count: 0, placing: false, openStake: 0, cycleWon: false };
+      level: 0, trades: 0, patternNeed: PAT, confirmNeed: cfg.recConfirm, strength: false, phase: PAT > 0 ? "pattern" : "confirm", patCount: 0, count: 0, placing: false, openStake: 0, cycleWon: false };
   }
   const qualifies = (leg, d) => !specLoses(recoverySpec(), d);
 
@@ -493,11 +493,12 @@ function startHedge2Engine(deps, cfg, hooks) {
     if (recQueue.length) {
       rec = recQueue.shift();
       rec.level = st.carry + 1;      // the loss that created this leg counts as one martingale step
-      rec.phase = PAT > 0 ? "pattern" : "confirm"; rec.patCount = 0; rec.count = 0; rec.placing = false;
+      rec.strength = false; rec.patternNeed = PAT; rec.confirmNeed = cfg.recConfirm;
+      rec.phase = rec.patternNeed > 0 ? "pattern" : "confirm"; rec.patCount = 0; rec.count = 0; rec.placing = false;
       setMode("recovery");
       const first = recStake(rec);
       log("Recovery for the losing contract (" + rec.from + " lost): " + rec.label + " - waiting for " +
-          (PAT > 0 ? PAT + " losing digit(s) in a row, then " : "") + cfg.recConfirm + " qualifying digit(s) in a row. First stake " + first.toFixed(2) + ".");
+          (rec.patternNeed > 0 ? rec.patternNeed + " losing digit(s) in a row, then " : "") + rec.confirmNeed + " qualifying digit(s) in a row. First stake " + first.toFixed(2) + ".");
       if (first > cfg.maxStake + 1e-9) {    // no point waiting for digits when the first stake is not allowed
         endLeg(rec, "limit", "First recovery stake " + first.toFixed(2) + " is above the maximum permitted stake (" + cfg.maxStake.toFixed(2) + ").");
         return;
@@ -658,6 +659,9 @@ function startHedge2Engine(deps, cfg, hooks) {
         const hit = limitHit();
         if (hit) { return endLeg(leg, "stop", hit); }
         if (!running) { return endLeg(leg, "stop"); }
+        // The first recovery uses the original pattern. Once that recovery loses,
+        // all later pattern-gated attempts use the Recovery strength settings.
+        if (leg.trades >= 1) { leg.strength = true; leg.patternNeed = Math.max(0, Math.floor(cfg.recStrengthPattern || 0)); leg.confirmNeed = Math.max(1, Math.floor(cfg.recStrengthConfirm || 1)); }
         const nStake = recStake(leg);
         const block = recBlock(leg, nStake);
         if (block) { return endLeg(leg, block.kind, block.msg); }
@@ -670,8 +674,8 @@ function startHedge2Engine(deps, cfg, hooks) {
         }
         // Immediate recovery is off: the whole recovery sequence starts again for the next recovery trade -
         // P losing digits in a row (if the pattern is on), then K qualifying digits in a row.
-        leg.phase = PAT > 0 ? "pattern" : "confirm"; leg.patCount = 0; leg.count = 0; leg.placing = false;
-        log("Recovery trade lost - starting the sequence again" + (PAT > 0 ? ": " + PAT + " losing digit(s) in a row, then " : ": ") + cfg.recConfirm + " qualifying digit(s) in a row.");
+        leg.phase = leg.patternNeed > 0 ? "pattern" : "confirm"; leg.patCount = 0; leg.count = 0; leg.placing = false;
+        log("Recovery trade lost - starting the " + (leg.strength ? "Recovery strength" : "original recovery") + " sequence again" + (leg.patternNeed > 0 ? ": " + leg.patternNeed + " losing digit(s) in a row, then " : ": ") + leg.confirmNeed + " qualifying digit(s) in a row.");
         refreshQuotes();
         emitState();
         return;
@@ -699,16 +703,16 @@ function startHedge2Engine(deps, cfg, hooks) {
           // Pattern (before EVERY recovery trade): P LOSING digits in a row - digits that lose the recovery contract.
           // Any other digit starts the pattern count again. Once met, the confirm digits are checked from the NEXT digit.
           if (!qualifies(rec, digit)) rec.patCount++; else rec.patCount = 0;
-          if (rec.patCount >= PAT) {
+          if (rec.patCount >= rec.patternNeed) {
             rec.phase = "confirm"; rec.count = 0;
-            log("Pattern complete: " + PAT + " losing digit(s) in a row - now waiting for " + cfg.recConfirm + " qualifying digit(s).");
+            log("Pattern complete: " + rec.patternNeed + " losing digit(s) in a row - now waiting for " + rec.confirmNeed + " qualifying digit(s).");
           }
         } else if (rec.phase === "confirm" && !rec.placing) {
           if (qualifies(rec, digit)) {
             // Recovery confirmation: K qualifying digits in a row (the first one after the losing run is digit 1).
             rec.count++;
-            if (rec.count >= cfg.recConfirm) { rec.placing = true; runRecovery(rec); }
-          } else if (PAT > 0) {
+            if (rec.count >= rec.confirmNeed) { rec.placing = true; runRecovery(rec); }
+          } else if (rec.patternNeed > 0) {
             // A LOSING digit (pattern on) - applies to every recovery trade, not only the first.
             if (rec.count === 0) {
               // No confirm digit yet: it is simply the losing run carrying on (the pattern is "at least P"), so nothing restarts.
@@ -717,9 +721,9 @@ function startHedge2Engine(deps, cfg, hooks) {
               // A confirm digit had already appeared: the losing-digit count starts again, and this digit is digit 1.
               rec.phase = "pattern"; rec.patCount = 1; rec.count = 0;
               log("Losing digit " + digit + " during confirmation - back to the losing-digit count (this digit is 1 of " + PAT + ").");
-              if (rec.patCount >= PAT) {      // a pattern of 1 is already complete
+              if (rec.patCount >= rec.patternNeed) {      // a pattern of 1 is already complete
                 rec.phase = "confirm";
-                log("Pattern complete: " + PAT + " losing digit(s) in a row - now waiting for " + cfg.recConfirm + " qualifying digit(s).");
+                log("Pattern complete: " + rec.patternNeed + " losing digit(s) in a row - now waiting for " + rec.confirmNeed + " qualifying digit(s).");
               }
             }
           } else {
