@@ -155,3 +155,8 @@ body.hedge-active footer {
   .ph-table th { font-size: 0.5rem; letter-spacing: 0; padding: 0.3rem 0.12rem 0.3rem 0.2rem; }
   .ph-table td { padding: 0.3rem 0.2rem; }
 }
+
+/* ---------- Trade history inside the Sniper Trader bot cards (Over/Under and Even/Odd) ----------
+   Uses the same .ph-hist-head / .ph-table-wrap / .ph-table styling as the Pro Hedging history above. */
+.sniper-history { margin-top: 1.1rem; padding-top: 1rem; border-top: 1px solid #EEF0F3; min-width: 0; max-width: 100%; }
+.sniper-history .ph-hist-note { overflow-wrap: anywhere; }
