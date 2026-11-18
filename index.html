@@ -298,33 +298,18 @@
             </div>
 
             <div class="sniper-fieldrow">
-              <span class="sniper-rowtitle">Recovery parameters</span>
-              <label class="fld" title="Before EVERY recovery trade. After a contract loses - and again after each lost recovery trade when Immediate recovery is off - wait for this many LOSING digits in a row (digits that lose the recovery contract: Over 2 = 0-2, Under 7 = 7-9) BEFORE the confirm digits are checked. At LEAST this many in a row are needed (more is fine). A digit that is not losing, before this many have appeared, restarts the count. If a losing digit appears after a confirm digit, the count starts again and that digit counts as 1. 0 = off."><span>Losing digits in a row</span>
-                <input id="ph-pattern" type="number" min="0" max="20" step="1" value="2" class="trade-input ch2" /></label>
-              <label class="fld" title="After the losing digits above (if used), this many qualifying digits in a row are needed before each recovery trade (Over 2: digits 3-9, Under 7: digits 0-6). Counting starts at the first qualifying digit after the losing digits (that digit is 1). Any other digit restarts the count; with the losing-digit count on, that sends the bot back to the losing-digit count."><span>Confirm digits</span>
-                <input id="ph-confirm" type="number" min="1" max="20" step="1" value="1" class="trade-input ch2" /></label>
-              <span class="sniper-rowtitle">Recovery strength</span>
-              <label class="fld" title="Used from the second recovery trade onward, after the first recovery trade has lost. Losing digits required before confirmation."><span>Losing digits in a row</span>
-                <input id="ph-strength-pattern" type="number" min="0" max="20" step="1" value="2" class="trade-input ch2" /></label>
-              <label class="fld" title="Used from the second recovery trade onward. Consecutive qualifying winning digits required after the losing-digit pattern."><span>Confirm digits</span>
-                <input id="ph-strength-confirm" type="number" min="1" max="20" step="1" value="1" class="trade-input ch2" /></label>
-              <label class="fld" title="The recovery stake is multiplied by this after every loss"><span>Multiplier</span>
-                <input id="ph-mult" type="number" min="1" max="10" step="0.1" value="2" class="trade-input ch3" /></label>
-              <label class="fld" title="Most recovery trades in one recovery cycle"><span>Max recovery trades</span>
-                <input id="ph-maxrec" type="number" min="1" max="30" step="1" value="3" class="trade-input ch2" /></label>
-              <label class="fld" title="Contract length of the recovery contracts, in ticks"><span>Recovery ticks</span>
-                <input id="ph-recdur" type="number" min="1" max="10" step="1" value="1" class="trade-input ch2" /></label>
-              <label class="fld" title="No trade above this stake is ever placed"><span>Max stake</span>
-                <input id="ph-maxstake" type="number" min="0.35" step="0.01" value="50" class="trade-input ch5" /></label>
-              <label class="fld" title="What happens when a recovery cycle ends WITHOUT a win (max trades or max stake reached)"><span>When the limit is reached</span>
-                <select id="ph-afterlimit" class="trade-select ph-select-limit">
-                  <option value="keep">Keep martingale, back to entry</option>
-                  <option value="reset" selected>Reset martingale, back to entry</option>
-                  <option value="stop">Stop the bot</option>
-                </select></label>
+              <span class="sniper-rowtitle">Recovery &amp; limits</span>
+              <label class="fld" title="Trades placed straight after a loss, before waiting for the pattern again"><span>Recovery</span>
+                <input id="sn-maxrec" type="number" min="1" step="1" value="2" class="trade-input ch2" /></label>
+              <label class="fld"><span>Stake</span>
+                <input id="sn-stake" type="number" min="0.35" step="0.01" value="0.35" class="trade-input ch5" /></label>
+              <label class="fld" title="The stake is multiplied by this after every loss"><span>Multiplier</span>
+                <input id="sn-mult" type="number" min="1" max="3" step="0.1" value="2" class="trade-input ch3" /></label>
+              <label class="fld"><span>Take profit</span>
+                <input id="sn-tp" type="number" min="0.01" step="0.01" value="10" class="trade-input ch5" /></label>
+              <label class="fld"><span>Stop loss</span>
+                <input id="sn-sl" type="number" min="0.01" step="0.01" value="20" class="trade-input ch5" /></label>
             </div>
-            <p id="ph-preview" class="ph-preview"></p>
-
 
             <div class="sniper-options">
               <label for="sn-immediate" title="Ticked: after a loss the recovery trades are bought straight away. Unticked: every recovery trade waits for the entry pattern (and confirm digits), like a normal entry."><input id="sn-immediate" type="checkbox" checked /> Immediate recovery</label>
