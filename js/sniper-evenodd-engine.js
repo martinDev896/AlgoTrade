@@ -42,6 +42,17 @@ function startEvenOddEngine(deps, cfg, hooks) {
   let lastStatus = "", reconnectNoticeOn = false;
   const status = function (s) { lastStatus = s; if (!reconnectNoticeOn && hooks.status) hooks.status(s); };
   const stats = hooks.stats || function () {};
+  // Trade history rows for the screen (optional "trade" hook): one row per contract, sent when it is bought and again
+  // when it settles. A loss read from the exit digit is sent as "estimated" (confirmed: false) until Deriv's final result
+  // replaces it. Nothing here touches trading: it is only called after the next buy has already been sent.
+  let tradeSeq = 0;
+  function tradeRow(stage, label, stake, contractId) {
+    return { id: ++tradeSeq, contractId: contractId, stage: stage, label: label, stake: stake, status: "open", profit: null, confirmed: false };
+  }
+  function tradeUpdate(row, won, profit, confirmed) {
+    row.status = won ? "won" : "lost"; row.profit = profit; row.confirmed = confirmed;
+    if (hooks.trade) hooks.trade(Object.assign({}, row));
+  }
   const round2 = (x) => Math.round(x * 100) / 100;
   const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
   const ms = (a, b) => Math.round(b - a) + " ms";
@@ -614,6 +625,7 @@ function startEvenOddEngine(deps, cfg, hooks) {
     let lossSeenAt = null, lossExitTickAt = null, lossResultLag = 0;
     try {
       do {
+        const stage = st.recovery ? "Recovery" : "Pattern";
         status(st.recovery ? "Recovery trade" : "Pattern trade");
         const stakeNow = st.stake;
         const contractNow = st.contract;       // a recovery trade repeats the contract that just lost
@@ -648,6 +660,8 @@ function startEvenOddEngine(deps, cfg, hooks) {
         const watch = watchContract(bought.buy.contract_id, contractNow);
         current = { confirmedAt: confirmedAt, ticks: [], watch: watch, firedEarly: false, kAtFinal: null, contract: contractNow };
         const rec = current;
+        const row = tradeRow(stage, contractNow === "DIGITEVEN" ? "Even" : "Odd", stakeNow, bought.buy.contract_id);
+        if (hooks.trade) hooks.trade(Object.assign({}, row));
         const first = await Promise.race([watch.earlyLoss, watch.final]);
         const seenAt = now();
         const exitTickAt = lastTickAt;   // the most recent tick before the result reached us
@@ -655,7 +669,7 @@ function startEvenOddEngine(deps, cfg, hooks) {
         if (first && first.early) {
           won = false; profit = -stakeNow; provisional = true;
           const finalP = watch.final.then(
-            function (poc) { if (pendingFinal === finalP) pendingFinal = null; reconcile(poc, stakeNow, seenAt, first.fromTick, rec); },
+            function (poc) { if (pendingFinal === finalP) pendingFinal = null; reconcile(poc, stakeNow, seenAt, first.fromTick, rec); tradeUpdate(row, wonOf(poc), Number(poc.profit) || 0, true); },
             function () { if (pendingFinal === finalP) pendingFinal = null; });
           pendingFinal = finalP;
         } else {
@@ -680,6 +694,7 @@ function startEvenOddEngine(deps, cfg, hooks) {
           lossResultLag = seenAt - exitTickAt;
         }
 
+        tradeUpdate(row, won, profit, !provisional);
         if (hooks.settled) hooks.settled();
         pushStats();
         log((won ? "WON " : "LOST ") + profit.toFixed(2) + (provisional ? " (from exit tick)" : "") +
