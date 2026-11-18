@@ -80,6 +80,40 @@
     el.last.textContent = ""; tone(el.last, 0);
     el.next.textContent = stake.toFixed(2);
     el.trades.textContent = "0"; el.wins.textContent = "0"; el.losses.textContent = "0";
+    resetHistory();
+  }
+
+  // ---------- trade history (same table as the Pro Hedging tab) ----------
+  // One row per contract, newest first. The engine sends a row when the trade is bought and again when it settles; a loss
+  // read from the exit digit is marked with * until Deriv's confirmed figure replaces it.
+  const histBody = $("eo-hist-body"), histEmpty = $("eo-hist-empty");
+  const histRows = new Map();
+  const MAX_HIST_ROWS = 500;
+  function upsertRow(r) {
+    if (!histBody) return;
+    if (histEmpty) histEmpty.classList.add("hidden");
+    let tr = histRows.get(r.id);
+    const isNew = !tr;
+    if (isNew) { tr = document.createElement("tr"); tr.dataset.rowId = r.id; histRows.set(r.id, tr); }
+    const resCls = r.status === "won" ? "ph-won" : r.status === "lost" ? "ph-lost" : "ph-open";
+    const resTxt = r.status === "won" ? "Won" : r.status === "lost" ? "Lost" : "Open";
+    const est = r.status !== "open" && !r.confirmed;     // loss read from the exit digit, Deriv's figure still to come
+    tr.innerHTML =
+      "<td>" + r.id + "</td>" +
+      '<td class="txt">' + r.stage + "</td>" +
+      '<td class="txt">' + r.label + "</td>" +
+      '<td class="r">' + r.stake.toFixed(2) + "</td>" +
+      '<td class="' + resCls + '">' + resTxt + "</td>" +
+      '<td class="r ' + resCls + '"' + (est ? ' title="Estimated - awaiting Deriv\'s confirmed figure"' : "") + ">" + (r.profit === null ? "—" : signed(r.profit) + (est ? "*" : "")) + "</td>";
+    if (isNew) {
+      histBody.insertBefore(tr, histBody.firstChild);
+      while (histBody.children.length > MAX_HIST_ROWS) { const old = histBody.lastChild; histRows.delete(Number(old.dataset.rowId)); histBody.removeChild(old); }
+    }
+  }
+  function resetHistory() {
+    if (!histBody) return;
+    histBody.innerHTML = ""; histRows.clear();
+    if (histEmpty) histEmpty.classList.remove("hidden");
   }
   function setStatus(text) {
     el.status.textContent = text;
@@ -254,6 +288,7 @@
       log: log,
       status: setStatus,
       stats: paintStats,
+      trade: upsertRow,
       bought: (b) => widget({ open: true, winDigits: WIN_DIGITS[b.contract] || [] }),
       settled: () => widget({ open: false }),
       finished: () => { widget({ open: false }); session = null; announce("evenodd", false); setRunningUI(false); },
