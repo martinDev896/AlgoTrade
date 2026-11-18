@@ -52,6 +52,7 @@
     <button class="app-tab" data-tab="sniper-trader">Sniper Trader</button>
     <button class="app-tab" data-tab="pro-hedging">Pro Hedging</button>
     <button class="app-tab" data-tab="pro-hedging-2">Pro Hedging 2</button>
+    <button class="app-tab" data-tab="ph-reverse">PH Reverse</button>
   </nav>
 
   <main>
@@ -616,6 +617,159 @@
         </div>
       </div>
 
+      <!-- ============ TAB: PH REVERSE ============ -->
+      <div id="tab-ph-reverse" class="tab-panel hidden">
+        <div class="sniper-workspace">
+
+          <!-- ============ SETTINGS ============ -->
+          <div class="sniper-card" id="phr-card">
+            <div class="sniper-meta">
+              <span>Trading <b id="phr-market-line">—</b></span>
+              <span id="phr-banner" class="sniper-banner hidden"></span>
+            </div>
+            <p class="sniper-hint"><b>Strategy:</b> after the chosen number of digits in a row with <b>no 4 or 5</b>, buy <b>Over 3</b> and <b>Under 6</b> together. A losing Over 3 side is recovered with <b>Under 4</b>; a losing Under 6 side is recovered with <b>Over 5</b>. Recovery uses a winning-digit streak followed by a losing-digit confirmation streak. A winning side is never recovered.</p>
+
+            <div class="sniper-fieldrow">
+              <span class="sniper-rowtitle">Entry parameters</span>
+              <label class="fld" title="Digits contracts only work on synthetic indices"><span>Market</span>
+                <select id="phr-market-select" class="trade-select ph-select-market"></select></label>
+              <label class="fld" title="Stake for EACH of the two entry contracts"><span>Initial stake</span>
+                <input id="phr-stake" type="number" min="0.35" step="0.01" value="0.35" class="trade-input ch5" /></label>
+              <label class="fld" title="Contract length of the entry contracts, in ticks"><span>Ticks</span>
+                <input id="phr-duration" type="number" min="1" max="10" step="1" value="1" class="trade-input ch2" /></label>
+              <label class="fld" title="How many digits in a row must appear WITHOUT a 4 or a 5 before both contracts are bought"><span>Digits in a row (no 4/5)</span>
+                <input id="phr-ndigits" type="number" min="1" max="20" step="1" value="4" class="trade-input ch2" /></label>
+              <label class="fld" title="Stop when the combined net profit of all contracts, recovery included, reaches this"><span>Take profit</span>
+                <input id="phr-tp" type="number" min="0.01" step="0.01" value="10" class="trade-input ch5" /></label>
+              <label class="fld" title="Stop when the combined net loss of all contracts, recovery included, reaches this"><span>Stop loss</span>
+                <input id="phr-sl" type="number" min="0.01" step="0.01" value="20" class="trade-input ch5" /></label>
+            </div>
+
+            <div class="sniper-fieldrow">
+              <span class="sniper-rowtitle">Recovery parameters</span>
+              <label class="fld" title="Before every pattern-gated recovery trade, wait for this many consecutive WINNING digits for the recovery contract: Under 4 = 0-3; Over 5 = 6-9."><span>Winning digits in a row</span>
+                <input id="phr-pattern" type="number" min="1" max="20" step="1" value="2" class="trade-input ch2" /></label>
+              <label class="fld" title="After the winning-digit streak, wait for this many consecutive LOSING digits: Under 4 = 4-9; Over 5 = 0-5. The recovery purchase is submitted on the tick that completes this pattern."><span>Losing/confirming digits in a row</span>
+                <input id="phr-confirm" type="number" min="1" max="20" step="1" value="1" class="trade-input ch2" /></label>
+              <span class="sniper-rowtitle">Recovery strength</span>
+              <label class="fld" title="Used from the second recovery trade onward, after the first recovery trade has lost. Consecutive winning digits required before confirmation."><span>Winning digits in a row</span>
+                <input id="phr-strength-pattern" type="number" min="1" max="20" step="1" value="2" class="trade-input ch2" /></label>
+              <label class="fld" title="Used from the second recovery trade onward. Consecutive losing/confirming digits required after the winning-digit pattern."><span>Losing/confirming digits in a row</span>
+                <input id="phr-strength-confirm" type="number" min="1" max="20" step="1" value="1" class="trade-input ch2" /></label>
+              <label class="fld" title="The recovery stake is multiplied by this after every loss"><span>Multiplier</span>
+                <input id="phr-mult" type="number" min="1" max="10" step="0.1" value="2" class="trade-input ch3" /></label>
+              <label class="fld" title="Most recovery trades in one recovery cycle"><span>Max recovery trades</span>
+                <input id="phr-maxrec" type="number" min="1" max="30" step="1" value="3" class="trade-input ch2" /></label>
+              <label class="fld" title="Contract length of the recovery contracts, in ticks"><span>Recovery ticks</span>
+                <input id="phr-recdur" type="number" min="1" max="10" step="1" value="1" class="trade-input ch2" /></label>
+              <label class="fld" title="No trade above this stake is ever placed"><span>Max stake</span>
+                <input id="phr-maxstake" type="number" min="0.35" step="0.01" value="50" class="trade-input ch5" /></label>
+              <label class="fld" title="What happens when a recovery cycle ends WITHOUT a win (max trades or max stake reached)"><span>When the limit is reached</span>
+                <select id="phr-afterlimit" class="trade-select ph-select-limit">
+                  <option value="keep">Keep martingale, back to entry</option>
+                  <option value="reset" selected>Reset martingale, back to entry</option>
+                  <option value="stop">Stop the bot</option>
+                </select></label>
+            </div>
+            <p id="phr-preview" class="ph-preview"></p>
+
+            <div class="sniper-options">
+              <label for="phr-recovery" title="Off = a losing side is just recorded"><input id="phr-recovery" type="checkbox" checked /> Recovery</label>
+              <label for="phr-immediate" title="After a recovery loss, buy the same recovery contract again at once, without waiting for confirmation digits"><input id="phr-immediate" type="checkbox" /> Immediate recovery</label>
+              <label for="phr-fast" title="Send the next recovery buy as soon as the contract update shows a losing exit digit, a moment before Deriv's final result. That loss is marked 'estimated' until Deriv confirms it."><input id="phr-fast" type="checkbox" checked /> Fast recovery (buy on exit-digit read)</label>
+              <label for="phr-hardstop" title="Do not place a trade whose stake could take the total loss past the stop loss"><input id="phr-hardstop" type="checkbox" checked /> Never place a trade that could pass the stop loss</label>
+            </div>
+
+            <div class="sniper-actions">
+              <button id="phr-run" class="btn-buy btn-buy-green">▶ Run</button>
+              <button id="phr-stop" class="btn-buy btn-buy-red" disabled>■ Stop</button>
+            </div>
+            <div id="phr-msg" class="sniper-msg hidden"></div>
+          </div>
+
+          <!-- ============ DASHBOARD ============ -->
+          <div class="sniper-card">
+            <div class="ph-dash-head">
+              <span id="phr-mode" class="sniper-chip">Stopped</span>
+              <div id="phr-digit-now" class="ph-digit-now" title="Latest digit">–</div>
+              <div>
+                <div id="phr-digits" class="ph-digits" aria-label="Recent last digits"></div>
+                <span class="ph-dash-note">Last digits (gold = 4 or 5)</span>
+              </div>
+            </div>
+
+            <div class="ph-progress">
+              <div>
+                <div class="ph-prog-top"><span>Entry confirmation (no 4 / 5)</span><b id="phr-entry-txt">0 / 0</b></div>
+                <div id="phr-entry-bar" class="ph-bar idle"><i></i></div>
+              </div>
+              <div>
+                <div class="ph-prog-top"><span id="phr-pat-label">Recovery winning digits</span><b id="phr-pat-txt">—</b></div>
+                <div id="phr-pat-bar" class="ph-bar idle"><i></i></div>
+              </div>
+              <div>
+                <div class="ph-prog-top"><span id="phr-rec-label">Recovery losing-digit confirmation</span><b id="phr-rec-txt">—</b></div>
+                <div id="phr-rec-bar" class="ph-bar idle"><i></i></div>
+              </div>
+            </div>
+
+            <!-- Digit distribution widget (same as the Sniper tab; the tick window is shared with the other widgets) -->
+            <div class="ph-widget">
+              <div class="sniper-digits-head">
+                <p id="phr-digits-label" class="digits-label">Last digit distribution — last 1,000 ticks</p>
+                <div class="sniper-digits-controls">
+                  <select id="phr-window" class="trade-select sniper-window-select" aria-label="Number of ticks used for the percentages">
+                    <option value="1000" selected>1,000 ticks</option><option value="500">500 ticks</option><option value="250">250 ticks</option><option value="100">100 ticks</option><option value="50">50 ticks</option><option value="25">25 ticks</option>
+                  </select>
+                  <select id="phr-widget-market" class="trade-select sniper-market-select"></select>
+                </div>
+              </div>
+              <p id="phr-digits-note" class="sniper-note hidden">Pick a synthetic index to see its digit percentages.</p>
+              <div id="phr-digits-row" class="digits-row"></div>
+            </div>
+
+            <div class="ph-stats">
+              <div class="sniper-tile">
+                <span class="sniper-tile-label">Total profit / loss</span>
+                <b id="phr-profit" class="sniper-big">0.00</b>
+                <small id="phr-profit-sub" class="ph-sub">Real Deriv results</small>
+                <small id="phr-profit-limits" class="ph-sub"></small>
+              </div>
+              <div class="sniper-tile">
+                <span class="sniper-tile-label">Next Stake</span>
+                <b id="phr-t-next" class="sniper-big">—</b>
+              </div>
+              <div class="sniper-tile ph-tile-counts">
+                <span class="sniper-tile-label">Contracts</span>
+                <div class="ph-counts">
+                  <div><small>Bought</small><b id="phr-c-bought">0</b></div>
+                  <div><small>Won</small><b id="phr-c-wins" class="sniper-pos">0</b></div>
+                  <div><small>Lost</small><b id="phr-c-losses" class="sniper-neg">0</b></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============ TRADE HISTORY ============ -->
+          <div class="sniper-card">
+            <div class="ph-hist-head">
+              <h3>Trade history</h3>
+              <span class="ph-hist-note">Every row is a real Deriv contract. <b>*</b> = loss read from the exit digit, awaiting Deriv’s confirmed figure.</span>
+            </div>
+            <div class="ph-table-wrap">
+              <table class="ph-table">
+                <thead><tr>
+                  <th class="c-id">#</th><th class="c-stage">Stage</th><th class="c-contract">Contract</th><th class="c-stake r">Stake</th><th class="c-result">Result</th><th class="c-pl r">Profit / loss</th>
+                </tr></thead>
+                <tbody id="phr-hist-body"></tbody>
+              </table>
+              <div id="phr-hist-empty" class="ph-empty">No trades yet. Press Run to start.</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
       <!-- ============ TAB: PRO HEDGING 2 ============ -->
       <div id="tab-pro-hedging-2" class="tab-panel hidden">
         <div class="sniper-workspace">
@@ -805,5 +959,7 @@
   <script src="js/pro-hedging.js"></script>
   <script src="js/pro-hedging-2-engine.js"></script>
   <script src="js/pro-hedging-2.js"></script>
+  <script src="js/ph-reverse-engine.js"></script>
+  <script src="js/ph-reverse.js"></script>
 </body>
 </html>
