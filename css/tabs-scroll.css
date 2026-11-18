@@ -1,0 +1,40 @@
+/* ==========================================================
+   AlgoTrade — scrollable tab bar
+   The top navigation bar (#app-tabs) never squeezes its tabs. Every tab keeps its
+   natural size on one line; when they do not all fit (small screens, or many tabs)
+   the bar scrolls sideways - swipe on a phone, wheel / drag / trackpad on desktop.
+   The scrollbar is hidden. Only the bar scrolls, never the page.
+   Loaded AFTER mobile-manual.css, which on small screens makes the tabs share the
+   width equally and wrap their names (that is what made them crowd and overlap).
+   ========================================================== */
+.app-tabs {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;          /* a swipe on the bar does not drag the page sideways */
+  scrollbar-width: none !important;        /* Firefox */
+  -ms-overflow-style: none !important;     /* old Edge / IE */
+  min-width: 0;
+  max-width: 100%;
+}
+.app-tabs::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }   /* Chrome, Safari, new Edge */
+
+.app-tabs .app-tab {
+  flex: 0 0 auto !important;               /* keep the natural width: no shrinking, no equal sharing */
+  min-width: auto !important;
+  white-space: nowrap !important;          /* one line per tab name */
+  text-align: center;
+}
+
+/* Desktop mouse: a grab cursor while the bar can be dragged */
+.app-tabs.is-scrollable { cursor: grab; }
+.app-tabs.is-dragging { cursor: grabbing; user-select: none; -webkit-user-select: none; }
+.app-tabs.is-dragging .app-tab { cursor: grabbing; }
+
+/* Phones: a little more room around each name now that the tabs no longer have to fit side by side */
+@media (max-width: 640px) {
+  .app-tabs { gap: 0.1rem; padding-left: 0.4rem; padding-right: 0.4rem; }
+  .app-tabs .app-tab { font-size: 0.8rem; padding: 0.5rem 0.75rem; }
+}
