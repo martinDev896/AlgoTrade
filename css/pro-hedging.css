@@ -156,7 +156,14 @@ body.hedge-active footer {
   .ph-table td { padding: 0.3rem 0.2rem; }
 }
 
-/* ---------- Trade history inside the Sniper Trader bot cards (Over/Under and Even/Odd) ----------
-   Uses the same .ph-hist-head / .ph-table-wrap / .ph-table styling as the Pro Hedging history above. */
-.sniper-history { margin-top: 1.1rem; padding-top: 1rem; border-top: 1px solid #EEF0F3; min-width: 0; max-width: 100%; }
-.sniper-history .ph-hist-note { overflow-wrap: anywhere; }
+/* ---------- Sniper Trader: keep the status / profit row at a constant height on phones ----------
+   Normally the status chip and the two stat boxes share one flexible row, so every time the chip text changes
+   ("Idle" -> "Waiting for pattern") or "last trade +0.80" appears, the boxes are re-squeezed and their text re-wraps:
+   the row grows and pushes the digit widget down while trades are placed. On phones the three items are stacked
+   in a fixed single column instead, so nothing can re-wrap and the widget stays where it is.
+   Scoped to the Sniper Trader tab only. */
+@media (max-width: 480px) {
+  #tab-sniper-trader .sniper-dash { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.5rem; }
+  #tab-sniper-trader .sniper-dash > .sniper-chip { justify-self: start; }
+  #tab-sniper-trader .sniper-dash > .sniper-tile { min-width: 0; }
+}
