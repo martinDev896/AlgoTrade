@@ -1,7 +1,7 @@
 // ==========================================================
-// AlgoTrade — pro-hedging.js
+// AlgoTrade — ph-reverse.js
 // UI for the "PH Reverse" tab. The strategy itself lives in
-// pro-hedging-engine.js (no DOM there); this file reads the settings,
+// ph-reverse-engine.js (no DOM there); this file reads the settings,
 // starts/stops the engine and paints the dashboard and trade history.
 //
 // Shares with the Sniper Trader tab:
@@ -356,8 +356,8 @@
   }
   // Digit ranges shown next to the recovery bars, so it is always clear what counts.
   const isOverLeg = (label) => /^Over/.test(label || "");
-  const losingRange = (label) => (isOverLeg(label) ? "0–5" : "4–9");        // digits that LOSE Over 5 / Under 4
-  const winningRange = (label) => (isOverLeg(label) ? "6–9" : "0–3");       // digits that WIN Over 5 / Under 4
+  const losingRange = (label) => (isOverLeg(label) ? "0–4" : "5–9");        // digits that LOSE Over 4 / Under 5
+  const winningRange = (label) => (isOverLeg(label) ? "5–9" : "0–4");       // digits that WIN Over 4 / Under 5
 
   function render(s) {
     // mode chip
