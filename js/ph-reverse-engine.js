@@ -8,11 +8,11 @@
 //   ENTRY     Same as Pro Hedging: wait for N digits in a row with NONE 4 or 5,
 //             then buy Over 3 and Under 6 together.
 //   OUTCOMES  Both win -> reset martingale. If one loses, recover only that side.
-//             Over 3 loss -> Under 4. Under 6 loss -> Over 5.
+//             Over 3 loss -> Under 5. Under 6 loss -> Over 4.
 //   RECOVERY  Stage 1: wait for P consecutive digits that WIN the recovery contract
-//             (Under 4: 0-3; Over 5: 6-9). A losing digit resets this count.
+//             (Under 5: 0-4; Over 4: 5-9). A losing digit resets this count.
 //             Stage 2: wait for K consecutive digits that LOSE the recovery contract
-//             (Under 4: 4-9; Over 5: 0-5). A winning digit resets both stages.
+//             (Under 5: 5-9; Over 4: 0-4). A winning digit resets both stages.
 //             Buy is initiated from the tick callback that completes Stage 2.
 //             After the first recovery loss, use Recovery strength P/K settings.
 //             Immediate recovery ON retains the existing immediate re-buy behaviour
@@ -74,11 +74,11 @@ function startPHReverseEngine(deps, cfg, hooks) {
   const recoverySpec = (r) => ({ side: r.side, contract: r.contract, barrier: r.recBarrier, label: r.name + " " + r.recBarrier, duration: cfg.recDuration });
   const specLoses = (spec, d) => (spec.contract === "DIGITOVER" ? !(d > spec.barrier) : !(d < spec.barrier));
   const ruleOf = (side) => (side === "OVER" ? OVER : UNDER);
-  // Reverse recovery mapping: a lost Over 3 is recovered with Under 4;
-  // a lost Under 6 is recovered with Over 5. The initial entry rules remain unchanged.
+  // Reverse recovery mapping: a lost Over 3 is recovered with Under 5;
+  // a lost Under 6 is recovered with Over 4. The initial entry rules remain unchanged.
   const recoveryRuleOf = (initialSide) => initialSide === "OVER"
-    ? { side: "UNDER", contract: "DIGITUNDER", recBarrier: 4, name: "Under" }
-    : { side: "OVER", contract: "DIGITOVER", recBarrier: 5, name: "Over" };
+    ? { side: "UNDER", contract: "DIGITUNDER", recBarrier: 5, name: "Under" }
+    : { side: "OVER", contract: "DIGITOVER", recBarrier: 4, name: "Over" };
   const recStake = (leg) => round2(S * Math.pow(cfg.mult, leg.level));
 
   // ---------- Totals (always recomputed from the history, so they can never drift) ----------
@@ -743,7 +743,7 @@ function startPHReverseEngine(deps, cfg, hooks) {
   emitState();
   log("Started: after " + cfg.nEntry + " digit(s) in a row with no 4 or 5, buy Over 3 + Under 6 (stake " + S.toFixed(2) + ", " + cfg.duration + " tick(s)). " +
       (cfg.recoveryEnabled
-        ? "Recovery: Over 3 -> Under 4, Under 6 -> Over 5; wait for " + PAT + " winning digit(s), then " + cfg.recConfirm + " losing/confirming digit(s); " + (cfg.immediate ? "immediate" : "confirmed") + " re-buys, max " + cfg.maxRec + " trades."
+        ? "Recovery: Over 3 -> Under 5, Under 6 -> Over 4; wait for " + PAT + " winning digit(s), then " + cfg.recConfirm + " losing/confirming digit(s); " + (cfg.immediate ? "immediate" : "confirmed") + " re-buys, max " + cfg.maxRec + " trades."
         : "Recovery is off."));
 
   return {
