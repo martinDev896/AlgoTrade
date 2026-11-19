@@ -341,21 +341,6 @@
               </div>
             </div>
             <div id="sn-log" class="sniper-msg hidden"></div>
-            <div class="sniper-history">
-              <div class="ph-hist-head">
-                <h3>Trade history</h3>
-                <span class="ph-hist-note">Every row is a real Deriv contract. <b>*</b> = loss read from the exit digit, awaiting Deriv’s confirmed figure.</span>
-              </div>
-              <div class="ph-table-wrap">
-                <table class="ph-table">
-                  <thead><tr>
-                    <th class="c-id">#</th><th class="c-stage">Stage</th><th class="c-contract">Contract</th><th class="c-stake r">Stake</th><th class="c-result">Result</th><th class="c-pl r">Profit / loss</th>
-                  </tr></thead>
-                  <tbody id="sn-hist-body"></tbody>
-                </table>
-                <div id="sn-hist-empty" class="ph-empty">No trades yet. Press Run to start.</div>
-              </div>
-            </div>
           </div>
 
           <!-- ============ EVEN/ODD SNIPER TRADER ============ -->
@@ -429,21 +414,6 @@
               </div>
             </div>
             <div id="eo-log" class="sniper-msg hidden"></div>
-            <div class="sniper-history">
-              <div class="ph-hist-head">
-                <h3>Trade history</h3>
-                <span class="ph-hist-note">Every row is a real Deriv contract. <b>*</b> = loss read from the exit digit, awaiting Deriv’s confirmed figure.</span>
-              </div>
-              <div class="ph-table-wrap">
-                <table class="ph-table">
-                  <thead><tr>
-                    <th class="c-id">#</th><th class="c-stage">Stage</th><th class="c-contract">Contract</th><th class="c-stake r">Stake</th><th class="c-result">Result</th><th class="c-pl r">Profit / loss</th>
-                  </tr></thead>
-                  <tbody id="eo-hist-body"></tbody>
-                </table>
-                <div id="eo-hist-empty" class="ph-empty">No trades yet. Press Run to start.</div>
-              </div>
-            </div>
           </div>
 
           <!-- Digit distribution widget — bottom of the tab, with its own market dropdown -->
@@ -459,6 +429,40 @@
             </div>
             <p id="sn-digits-note" class="sniper-note hidden">Pick a synthetic index to see its digit percentages.</p>
             <div id="sn-digits-row" class="digits-row"></div>
+          </div>
+
+          <!-- Trade history - BELOW the digit widget, so the widget never moves when trades are placed.
+               One card per bot; the bot picker shows the one for the selected bot. -->
+          <div id="sn-ou-history-card" class="sniper-card">
+            <div class="ph-hist-head">
+              <h3>Trade history</h3>
+              <span class="ph-hist-note">Every row is a real Deriv contract. <b>*</b> = loss read from the exit digit, awaiting Deriv’s confirmed figure.</span>
+            </div>
+            <div class="ph-table-wrap">
+              <table class="ph-table">
+                <thead><tr>
+                  <th class="c-id">#</th><th class="c-stage">Stage</th><th class="c-contract">Contract</th><th class="c-stake r">Stake</th><th class="c-result">Result</th><th class="c-pl r">Profit / loss</th>
+                </tr></thead>
+                <tbody id="sn-hist-body"></tbody>
+              </table>
+              <div id="sn-hist-empty" class="ph-empty">No trades yet. Press Run to start.</div>
+            </div>
+          </div>
+
+          <div id="sn-eo-history-card" class="sniper-card hidden">
+            <div class="ph-hist-head">
+              <h3>Trade history</h3>
+              <span class="ph-hist-note">Every row is a real Deriv contract. <b>*</b> = loss read from the exit digit, awaiting Deriv’s confirmed figure.</span>
+            </div>
+            <div class="ph-table-wrap">
+              <table class="ph-table">
+                <thead><tr>
+                  <th class="c-id">#</th><th class="c-stage">Stage</th><th class="c-contract">Contract</th><th class="c-stake r">Stake</th><th class="c-result">Result</th><th class="c-pl r">Profit / loss</th>
+                </tr></thead>
+                <tbody id="eo-hist-body"></tbody>
+              </table>
+              <div id="eo-hist-empty" class="ph-empty">No trades yet. Press Run to start.</div>
+            </div>
           </div>
 
         </div>
