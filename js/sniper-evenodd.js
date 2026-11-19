@@ -20,6 +20,7 @@
 
   const el = {
     pickOU: $("sn-pick-ou"), pickEO: $("sn-pick-eo"), cardOU: $("sn-ou-card"), cardEO: $("sn-eo-card"),
+    histOU: $("sn-ou-history-card"), histEO: $("sn-eo-history-card"),
     banner: $("eo-banner"), marketLine: $("eo-market-line"), hint: $("eo-hint"),
     mode: $("eo-mode"), duration: $("eo-duration"), nDigits: $("eo-ndigits"), confirm: $("eo-confirm"), maxRec: $("eo-maxrec"),
     stake: $("eo-stake"), mult: $("eo-mult"), tp: $("eo-tp"), sl: $("eo-sl"), maxTrades: $("eo-maxtrades"),
@@ -131,6 +132,8 @@
     const eo = bot === "evenodd";
     el.cardOU.classList.toggle("hidden", eo);
     el.cardEO.classList.toggle("hidden", !eo);
+    if (el.histOU) el.histOU.classList.toggle("hidden", eo);       // the trade history under the digit widget follows the picker
+    if (el.histEO) el.histEO.classList.toggle("hidden", !eo);
     el.pickOU.classList.toggle("active", !eo);
     el.pickEO.classList.toggle("active", eo);
     el.pickOU.setAttribute("aria-pressed", String(!eo));
