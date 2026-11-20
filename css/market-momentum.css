@@ -1,0 +1,45 @@
+/* Market Momentum — responsive dashboard */
+.momentum-page { width:100%; min-width:0; display:flex; flex-direction:column; gap:.8rem; padding:.2rem 0 .8rem; }
+.momentum-controls { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:.65rem; padding:.85rem; background:#fff; border:1px solid #e4e7eb; border-radius:10px; }
+.momentum-controls label { display:flex; flex-direction:column; gap:.35rem; min-width:0; color:#68717d; font-size:.75rem; font-weight:600; }
+.momentum-controls select { width:100%; min-width:0; }
+.momentum-workspace { display:grid; grid-template-columns:minmax(0,1fr) minmax(270px,320px); gap:.8rem; align-items:start; min-width:0; }
+.momentum-main-column { min-width:0; display:flex; flex-direction:column; gap:.8rem; }
+.momentum-card { background:#fff; border:1px solid #e4e7eb; border-radius:10px; padding:1rem; min-width:0; color:#1a1d22; }
+.momentum-card-heading { display:flex; justify-content:space-between; align-items:flex-start; gap:.8rem; }
+.momentum-card h2 { margin:0; font-size:1.1rem; }
+.momentum-card-heading p { margin:.25rem 0 0; color:#737d89; font-size:.78rem; }
+.mm-live-status { color:#16834c; font-size:.75rem; white-space:nowrap; }
+.mm-history { display:flex; flex-wrap:wrap; gap:4px; align-items:center; min-height:36px; padding:.55rem 0 .35rem; border-bottom:1px solid #e5e8ec; }
+.mm-history-chip { width:23px; height:25px; display:grid; place-items:center; border-radius:5px; font:600 .72rem 'JetBrains Mono',monospace; }
+.mm-history-chip.up { color:#087d47; background:#e4f5eb; }.mm-history-chip.down { color:#c53b42; background:#fdebed; }.mm-history-chip.flat { color:#68717d; background:#edf0f3; }
+.mm-history-caption { display:flex; justify-content:space-between; color:#818a95; font-size:.68rem; padding:.35rem 0 .75rem; }
+.mm-chart { display:flex; align-items:stretch; justify-content:space-evenly; gap:.7rem; min-height:220px; height:clamp(220px,32vw,330px); padding:.4rem .3rem 0; border-bottom:1px solid #e5e8ec; }
+.mm-bar-item { flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:.25rem; }
+.mm-bar-value { font:600 .78rem 'JetBrains Mono',monospace; color:#343b44; }
+.mm-bar-track { width:min(100%,74px); flex:1; min-height:90px; display:flex; align-items:flex-end; background:#f1f3f5; border-radius:7px 7px 0 0; overflow:hidden; }
+.mm-bar-fill { width:100%; min-height:2px; border-radius:6px 6px 0 0; transition:height .2s ease; }.mm-bar-fill.up { background:#18a765; }.mm-bar-fill.down { background:#e05259; }
+.mm-bar-item b { font-size:.75rem; text-align:center; overflow-wrap:anywhere; }.mm-bar-item small { color:#89919b; font-size:.65rem; margin-bottom:.45rem; }
+.mm-legend { display:flex; flex-wrap:wrap; gap:.85rem; padding-top:.7rem; color:#65707c; font-size:.72rem; }
+.mm-legend span { display:flex; align-items:center; gap:.35rem; }.mm-legend i { display:inline-block; width:9px; height:9px; border-radius:50%; }.mm-legend i.up { background:#18a765; }.mm-legend i.down { background:#e05259; }.mm-legend i.flat { background:#9aa3ad; }
+.mm-insights-card h3 { margin:0 0 .7rem; font-size:.95rem; }.mm-insights { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.55rem; }
+.mm-insight { padding:.7rem; background:#f7f8fa; border:1px solid #edf0f2; border-radius:7px; min-width:0; }.mm-insight span { display:block; color:#78828e; font-size:.67rem; margin-bottom:.3rem; }.mm-insight b { display:block; font-size:.82rem; overflow-wrap:anywhere; }
+.mm-disclaimer { margin:.8rem 0 0; color:#828b95; font-size:.68rem; line-height:1.45; }
+.mm-trade-column { min-width:0; background:#fff; border:1px solid #e4e7eb; border-radius:10px; padding:.75rem; }
+.mm-trade-heading { display:flex; justify-content:space-between; align-items:center; gap:.5rem; margin-bottom:.6rem; }.mm-trade-heading h3 { margin:0; font-size:.95rem; }
+.mm-toggle { border:1px solid #d9dee4; border-radius:6px; background:#f7f8fa; padding:.35rem .65rem; font-size:.72rem; font-weight:600; cursor:pointer; }
+#mm-trade-slot { min-width:0; }.mm-trade-collapsed { display:none; }
+.mm-trade-column .trade-panel { width:100%; max-width:none; height:auto; max-height:none; overflow:visible; border:0; padding:.35rem 0; box-shadow:none; }
+.mm-digits-slot { background:#fff; border:1px solid #e4e7eb; border-radius:10px; padding:.75rem; min-width:0; }.mm-digits-slot.hidden { display:none; }
+#mm-digits-slot .digits-widget { display:block !important; border:0; padding:0; }
+@media (max-width:1100px) { .momentum-controls { grid-template-columns:repeat(3,minmax(0,1fr)); } .momentum-workspace { grid-template-columns:minmax(0,1fr) 285px; } .mm-insights { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:850px) { .momentum-workspace { display:flex; flex-direction:column; } .momentum-main-column,.mm-trade-column { width:100%; } .mm-trade-column { order:2; } .mm-digits-slot { order:3; } .momentum-page { gap:.55rem; } }
+@media (max-width:600px) { .momentum-controls { grid-template-columns:repeat(2,minmax(0,1fr)); gap:.5rem; padding:.65rem; }.momentum-controls label { font-size:.68rem; }.momentum-controls label:first-child { grid-column:1/-1; }
+  .momentum-card { padding:.7rem; }.momentum-card h2 { font-size:1rem; }.mm-chart { height:220px; min-height:200px; gap:.25rem; padding-left:0; padding-right:0; }.mm-bar-value { font-size:.65rem; }.mm-bar-item b { font-size:.65rem; }.mm-bar-item small { font-size:.58rem; }.mm-bar-track { max-width:44px; min-height:80px; }.mm-insights { grid-template-columns:repeat(2,minmax(0,1fr)); gap:.4rem; }.mm-insight { padding:.55rem; }.mm-insight b { font-size:.73rem; }.mm-history-chip { width:20px; height:22px; font-size:.65rem; }.mm-live-status { font-size:.65rem; }
+}
+@media (max-width:360px) { .momentum-controls { grid-template-columns:1fr; }.momentum-controls label:first-child { grid-column:auto; }.mm-insights { grid-template-columns:1fr; } }
+/* The extra analysis tab makes a swipeable tab strip more usable on phones. */
+@media (max-width:640px) {
+  .app-tabs { justify-content:flex-start; overflow-x:auto !important; overflow-y:hidden; }
+  .app-tabs .app-tab { flex:0 0 auto !important; min-width:max-content; white-space:nowrap; padding:.42rem .62rem; }
+}
