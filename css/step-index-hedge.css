@@ -24,3 +24,16 @@
 
 /* Phase 5 — delayed-entry analysis */
 .sih-phase5-card{min-width:0}.sih-delayed-grid{display:grid;gap:14px;min-width:0}.sih-delayed-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.sih-delayed-summary>div{background:var(--sih-soft,#f5f7fb);border:1px solid var(--sih-border,#e5eaf2);border-radius:9px;padding:12px;min-width:0}.sih-delayed-summary span{display:block;color:var(--sih-muted,#718096);font-size:11px;margin-bottom:6px}.sih-delayed-summary b{font-size:17px;overflow-wrap:anywhere}.sih-delayed-table-wrap{width:100%;overflow-x:auto}.sih-delayed-table{width:100%;border-collapse:collapse;min-width:560px;font-size:12px}.sih-delayed-table th,.sih-delayed-table td{padding:11px 12px;text-align:left;border-bottom:1px solid var(--sih-border,#e5eaf2);white-space:nowrap}.sih-delayed-table th{color:var(--sih-muted,#718096);font-size:10px;text-transform:uppercase}.sih-delayed-table small{color:var(--sih-muted,#718096)}@media(max-width:760px){.sih-delayed-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.sih-delayed-summary b{font-size:15px}}
+
+
+/* Phase 6 — chronological training / holdout validation */
+.sih-validation{margin-top:16px;padding-top:15px;border-top:1px solid #e8edf3;display:grid;gap:12px;min-width:0}
+.sih-validation-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.sih-validation-head h3{font-size:.9rem;margin:0 0 4px;color:#263449}
+.sih-validation-head p{font-size:.7rem;color:#7a8493;margin:0;line-height:1.45}
+.sih-validation-table-wrap{width:100%;overflow-x:auto}
+.sih-validation-result{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.sih-validation-result>div{padding:11px;background:#f7f9fc;border:1px solid #edf0f4;border-radius:9px;min-width:0}
+.sih-validation-result span,.sih-validation-result small{display:block;color:#788394;font-size:.66rem;line-height:1.45}
+.sih-validation-result b{display:block;margin:5px 0;font-size:1rem;overflow-wrap:anywhere}
+@media(max-width:650px){.sih-validation-head{flex-direction:column}.sih-validation-result{grid-template-columns:1fr}.sih-validation .sih-delayed-table{min-width:650px}}
