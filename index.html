@@ -24,6 +24,7 @@
 <link rel="stylesheet" href="css/pro-hedging-2.css" />
 <link rel="stylesheet" href="css/tabs-scroll.css" />
 <link rel="stylesheet" href="css/market-momentum.css" />
+<link rel="stylesheet" href="css/step-index-hedge.css" />
 </head>
 <body>
 
@@ -55,6 +56,7 @@
     <button class="app-tab" data-tab="pro-hedging-2">Pro Hedging 2</button>
     <button class="app-tab" data-tab="ph-reverse">PH Reverse</button>
     <button class="app-tab" data-tab="market-momentum">Market Momentum</button>
+    <button class="app-tab" data-tab="step-index-hedge">Step Index Dual Hedge</button>
   </nav>
 
   <main>
@@ -975,6 +977,34 @@
         </section>
       </div>
 
+      <!-- ============ TAB: STEP INDEX DUAL HEDGE ============ -->
+      <div id="tab-step-index-hedge" class="tab-panel hidden">
+        <section class="sih-page">
+          <header class="sih-header">
+            <div><span class="sih-eyebrow">STEP INDEX STRATEGY</span><h1>Dual Hedge Analyzer</h1><p>Compare two-tick outcomes across Step Indices before enabling live execution.</p></div>
+            <span class="sih-mode-pill">ANALYSIS / PAPER MODE</span>
+          </header>
+          <section class="sih-card sih-controls">
+            <label>Analysis sample<select id="sih-sample" class="trade-select"><option value="100">100 pairs</option><option value="250">250 pairs</option><option value="500" selected>500 pairs</option><option value="1000">1,000 pairs</option><option value="2500">2,500 pairs</option><option value="5000">5,000 pairs</option></select></label>
+            <label>Selected Step Index<select id="sih-market" class="trade-select"><option value="">Load markets first</option></select></label>
+            <label>Stake per contract ($)<input id="sih-stake" class="trade-select" type="number" min="0.35" step="0.01" value="1"></label>
+            <label>Assumed winning payout ($)<input id="sih-min-payout" class="trade-select" type="number" min="0.01" step="0.01" value="3.82"></label>
+            <div class="sih-actions"><button id="sih-scan" class="sih-primary" type="button">Analyse all Step Indices</button><button id="sih-analyse-one" class="sih-secondary" type="button">Analyse selected</button></div>
+          </section>
+          <div class="sih-status-row"><span id="sih-status">Waiting for Deriv connection…</span><span id="sih-progress"></span></div>
+          <section class="sih-card">
+            <div class="sih-section-heading"><div><h2>Market ranking</h2><p>Ranked by observed zero-net-movement frequency, with sample size shown.</p></div><span class="sih-badge">2-tick expiry</span></div>
+            <div class="sih-table-wrap"><table class="sih-table"><thead><tr><th>Rank</th><th>Step Index</th><th>Pairs</th><th>Rise</th><th>Fall</th><th>Zero net</th><th>Return to entry</th><th>Flat throughout</th><th>Assessment</th></tr></thead><tbody id="sih-ranking"><tr><td colspan="9" class="sih-empty">Run an analysis to compare markets.</td></tr></tbody></table></div>
+          </section>
+          <div class="sih-grid">
+            <section class="sih-card"><div class="sih-section-heading"><div><h2>Selected market analysis</h2><p id="sih-selected-subtitle">Choose a Step Index and run an analysis.</p></div><span id="sih-selected-score" class="sih-score">—</span></div><div id="sih-metrics" class="sih-metrics"><div class="sih-metric"><span>Two-tick rise</span><b>—</b></div><div class="sih-metric"><span>Two-tick fall</span><b>—</b></div><div class="sih-metric"><span>Zero net movement</span><b>—</b></div><div class="sih-metric"><span>Flat throughout</span><b>—</b></div></div><div class="sih-bar-area" id="sih-distribution"><p class="sih-empty">Analysis results will appear here.</p></div></section>
+            <section class="sih-card"><div class="sih-section-heading"><div><h2>Paper hedge calculator</h2><p>Uses the selected market's observed two-tick distribution.</p></div></div><div id="sih-calculator" class="sih-calculator"><p class="sih-empty">Analyse a market to calculate the hypothetical results.</p></div><p class="sih-note">Illustrative expectation only. Actual Deriv payouts can change between quotes; the two purchases are not atomic and may have different entry spots.</p></section>
+          </div>
+          <section class="sih-card"><div class="sih-section-heading"><div><h2>Live paper observations</h2><p>Tracks new two-tick outcomes on the selected index using the app's existing shared tick stream. No contracts are purchased.</p></div><span id="sih-paper-status" class="sih-badge">Not active</span></div><div class="sih-paper-stats" id="sih-paper-stats"><div><span>Observed pairs</span><b>0</b></div><div><span>One-side wins</span><b>0</b></div><div><span>Double-loss events</span><b>0</b></div><div><span>Double-loss rate</span><b>—</b></div></div><div id="sih-paper-log" class="sih-paper-log">Select a market to begin observing its live ticks.</div></section>
+          <div class="sih-warning"><strong>Live trading is deliberately disabled in this first build.</strong> This version establishes market discovery, historical ranking and live paper measurement. We will validate the statistics and execution safeguards before adding real-money paired purchases.</div>
+        </section>
+      </div>
+
     </section>
 
     <section id="error-screen" class="hero hidden">
@@ -1011,5 +1041,6 @@
   <script src="js/ph-reverse-engine.js"></script>
   <script src="js/ph-reverse.js"></script>
   <script src="js/market-momentum.js"></script>
+  <script src="js/step-index-hedge.js"></script>
 </body>
 </html>
