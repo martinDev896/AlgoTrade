@@ -11,7 +11,7 @@
     scan: $('sih-scan'), one: $('sih-analyse-one'), status: $('sih-status'), progress: $('sih-progress'),
     ranking: $('sih-ranking'), subtitle: $('sih-selected-subtitle'), score: $('sih-selected-score'),
     metrics: $('sih-metrics'), distribution: $('sih-distribution'), calculator: $('sih-calculator'),
-    paperStatus: $('sih-paper-status'), paperStats: $('sih-paper-stats'), paperLog: $('sih-paper-log'), delayed: $('sih-delayed-analysis')
+    paperStatus: $('sih-paper-status'), paperStats: $('sih-paper-stats'), paperLog: $('sih-paper-log'), delayed: $('sih-delayed-analysis'), validation: $('sih-validation')
   };
   if (!el.scan || typeof derivAPI === 'undefined') return;
 
@@ -89,24 +89,49 @@
   }
 
   function classifyDelayedEntry(prices, decimals, method = 'overlap') {
-    // Signal is P0→P1; hypothetical entry is P1; expiry is P3 (two ticks later).
-    // Four-quote windows; non-overlap advances three ticks to avoid shared quotes.
-    const out = { total:0, signalUp:0, signalDown:0, signalFlat:0, upRise:0, upFall:0, upZero:0, downRise:0, downFall:0, downZero:0, overallRise:0, overallFall:0, overallZero:0 };
-    const stride = method === 'nonoverlap' ? 3 : 1;
+    // Chronological holdout: earliest 80% of quote history selects a signal;
+    // latest 20% is reserved for out-of-sample evaluation.
+    const out = {
+      total:0, signalUp:0, signalDown:0, signalFlat:0,
+      upRise:0, upFall:0, upZero:0, downRise:0, downFall:0, downZero:0,
+      overallRise:0, overallFall:0, overallZero:0,
+      train:{total:0, up:{n:0,rise:0,fall:0,zero:0}, down:{n:0,rise:0,fall:0,zero:0}},
+      test:{total:0, up:{n:0,rise:0,fall:0,zero:0}, down:{n:0,rise:0,fall:0,zero:0}},
+      chosenSignal:'insufficient', chosenTest:null
+    };
+    const stride = method === 'nonoverlap' ? 4 : 1;
+    const splitAt = Math.floor(prices.length * 0.8);
     for (let i=0; i+3<prices.length; i+=stride) {
       const p0=toUnits(prices[i],decimals), p1=toUnits(prices[i+1],decimals), p3=toUnits(prices[i+3],decimals);
-      const signal=Math.sign(p1-p0), outcome=Math.sign(p3-p1); out.total++;
-      if(signal>0) out.signalUp++; else if(signal<0) out.signalDown++; else out.signalFlat++;
+      const signal=Math.sign(p1-p0), outcome=Math.sign(p3-p1);
+      const isTrain = i + 3 < splitAt;
+      const bucket = isTrain ? out.train : (i >= splitAt ? out.test : null);
+      // Omit the single window that straddles the chronological split.
+      if (!bucket) continue;
+      out.total++; bucket.total++;
+      if (signal>0) out.signalUp++; else if(signal<0) out.signalDown++; else out.signalFlat++;
       if(outcome>0) out.overallRise++; else if(outcome<0) out.overallFall++; else out.overallZero++;
-      if(signal>0) { if(outcome>0) out.upRise++; else if(outcome<0) out.upFall++; else out.upZero++; }
-      if(signal<0) { if(outcome>0) out.downRise++; else if(outcome<0) out.downFall++; else out.downZero++; }
+      if (signal > 0 || signal < 0) {
+        const side = signal > 0 ? 'up' : 'down';
+        const row = bucket[side]; row.n++;
+        if (outcome > 0) row.rise++;
+        else if (outcome < 0) row.fall++;
+        else row.zero++;
+        if(signal>0) { if(outcome>0) out.upRise++; else if(outcome<0) out.upFall++; else out.upZero++; }
+        else { if(outcome>0) out.downRise++; else if(outcome<0) out.downFall++; else out.downZero++; }
+      }
     }
+    const upRate = out.train.up.n >= 30 ? out.train.up.zero/out.train.up.n : Infinity;
+    const downRate = out.train.down.n >= 30 ? out.train.down.zero/out.train.down.n : Infinity;
+    out.chosenSignal = Math.min(upRate,downRate) === Infinity ? 'insufficient (<30 train observations)' : (upRate <= downRate ? 'UP' : 'DOWN');
+    const chosen = out.chosenSignal === 'UP' ? out.test.up : out.chosenSignal === 'DOWN' ? out.test.down : null;
+    out.chosenTest = chosen ? {...chosen, zeroRate: chosen.n ? chosen.zero/chosen.n : null} : null;
     return out;
   }
 
   async function analyseMarket(meta, count, token, method) {
     // Phase 5 needs four quotes per delayed-entry observation.
-    const requestedTicks = method === 'nonoverlap' ? Math.min(5000, count * 3 + 1) : Math.min(5000, count + 3);
+    const requestedTicks = method === 'nonoverlap' ? Math.min(5000, count * 4 + 1) : Math.min(5000, count + 3);
     const response = await derivAPI.send({ ticks_history: meta.symbol, style: 'ticks', count: requestedTicks, end: 'latest' });
     if (response.error) throw new Error(response.error.message || 'History request failed');
     const prices = (response.history?.prices || response.prices || []).map(Number).filter(Number.isFinite);
@@ -217,7 +242,25 @@
       ['After first tick UP', d.signalUp || 0, d.upRise || 0, d.upFall || 0, d.upZero || 0],
       ['After first tick DOWN', d.signalDown || 0, d.downRise || 0, d.downFall || 0, d.downZero || 0]
     ];
-    if (el.delayed) el.delayed.innerHTML = `<div class="sih-delayed-summary"><div><span>Delayed-entry windows</span><b>${d.total || 0}</b></div><div><span>Delayed Rise</span><b>${pct(d.overallRise || 0,d.total || 0).toFixed(2)}%</b></div><div><span>Delayed Fall</span><b>${pct(d.overallFall || 0,d.total || 0).toFixed(2)}%</b></div><div><span>Delayed zero-net</span><b class="negative">${pct(d.overallZero || 0,d.total || 0).toFixed(2)}%</b></div></div><div class="sih-delayed-table-wrap"><table class="sih-delayed-table"><thead><tr><th>First movement signal</th><th>Signals</th><th>2-tick Rise</th><th>2-tick Fall</th><th>2-tick zero</th></tr></thead><tbody>${delayedRows.map(([label,n,up,down,zero])=>`<tr><td>${label}</td><td>${n}</td><td>${n?pct(up,n).toFixed(2)+'%':'—'} <small>(${up})</small></td><td>${n?pct(down,n).toFixed(2)+'%':'—'} <small>(${down})</small></td><td>${n?pct(zero,n).toFixed(2)+'%':'—'} <small>(${zero})</small></td></tr>`).join('')}</tbody></table></div><p class="sih-calc-caption">Signal: P0 → P1; hypothetical entry: P1; expiry: P3. First-flat signals are included in overall outcomes but excluded from directional rows. ${r.method === 'nonoverlap' ? 'Four-quote windows advance by three ticks to avoid shared quotes.' : 'Four-quote windows overlap and are descriptive, not independent trials.'} Exact comparisons use integer pip units.</p>`;
+    if (el.delayed) el.delayed.innerHTML = `<div class="sih-delayed-summary"><div><span>Delayed-entry windows</span><b>${d.total || 0}</b></div><div><span>Delayed Rise</span><b>${pct(d.overallRise || 0,d.total || 0).toFixed(2)}%</b></div><div><span>Delayed Fall</span><b>${pct(d.overallFall || 0,d.total || 0).toFixed(2)}%</b></div><div><span>Delayed zero-net</span><b class="negative">${pct(d.overallZero || 0,d.total || 0).toFixed(2)}%</b></div></div><div class="sih-delayed-table-wrap"><table class="sih-delayed-table"><thead><tr><th>First movement signal</th><th>Signals</th><th>2-tick Rise</th><th>2-tick Fall</th><th>2-tick zero</th></tr></thead><tbody>${delayedRows.map(([label,n,up,down,zero])=>`<tr><td>${label}</td><td>${n}</td><td>${n?pct(up,n).toFixed(2)+'%':'—'} <small>(${up})</small></td><td>${n?pct(down,n).toFixed(2)+'%':'—'} <small>(${down})</small></td><td>${n?pct(zero,n).toFixed(2)+'%':'—'} <small>(${zero})</small></td></tr>`).join('')}</tbody></table></div><p class="sih-calc-caption">Signal: P0 → P1; hypothetical entry: P1; expiry: P3. First-flat signals are included in overall outcomes but excluded from directional rows. ${r.method === 'nonoverlap' ? 'Four-quote windows advance by four ticks so no quote is shared between observations.' : 'Four-quote windows overlap and are descriptive, not independent trials.'} Exact comparisons use integer pip units.</p>`;
+    if (el.validation) {
+      const fmt = n => Number.isFinite(n) ? (n*100).toFixed(2)+'%' : '—';
+      const tr = d.train || {up:{},down:{}}, te = d.test || {up:{},down:{}};
+      const sideRows = [
+        ['UP signal', tr.up, te.up],
+        ['DOWN signal', tr.down, te.down]
+      ];
+      const selectedTrain = d.chosenSignal === 'UP' ? tr.up : d.chosenSignal === 'DOWN' ? tr.down : null;
+      const selectedTest = d.chosenTest;
+      const stakeNow = Math.max(0, Number(el.stake.value)||0);
+      const assumed = Math.max(0, Number(el.minPayout.value)||0);
+      const testEV = selectedTest && selectedTest.n ? ((selectedTest.rise/selectedTest.n)*(assumed-2*stakeNow) + (selectedTest.fall/selectedTest.n)*(assumed-2*stakeNow) - (selectedTest.zero/selectedTest.n)*(2*stakeNow)) : NaN;
+      el.validation.innerHTML = `<div class="sih-validation-head"><div><h3>Phase 6 · Conditional strategy validation</h3><p>Earliest 80% selects the signal; newest 20% is held out and not used to choose it.</p></div><span class="sih-badge">Out-of-sample test</span></div>
+        <div class="sih-validation-table-wrap"><table class="sih-delayed-table"><thead><tr><th>Entry condition</th><th>Train n</th><th>Train zero</th><th>Test n</th><th>Test zero</th><th>Test Rise</th><th>Test Fall</th></tr></thead><tbody>${sideRows.map(([label,a,b])=>`<tr><td>${label}</td><td>${a.n||0}</td><td>${a.n?fmt(a.zero/a.n):'—'} <small>(${a.zero||0})</small></td><td>${b.n||0}</td><td>${b.n?fmt(b.zero/b.n):'—'} <small>(${b.zero||0})</small></td><td>${b.n?fmt(b.rise/b.n):'—'} <small>(${b.rise||0})</small></td><td>${b.n?fmt(b.fall/b.n):'—'} <small>(${b.fall||0})</small></td></tr>`).join('')}</tbody></table></div>
+        <div class="sih-validation-result"><div><span>Signal selected using training data</span><b>${d.chosenSignal}</b><small>${selectedTrain ? `${selectedTrain.n} training observations · ${fmt(selectedTrain.n?selectedTrain.zero/selectedTrain.n:NaN)} zero-net` : 'Insufficient directional observations'}</small></div><div><span>Held-out observations for selected signal</span><b>${selectedTest?.n || 0}</b><small>${selectedTest ? `${selectedTest.zero} double-loss cases · ${fmt(selectedTest.zeroRate)}` : 'No holdout sample'}</small></div><div><span>Illustrative held-out net / pair</span><b class="${Number.isFinite(testEV)&&testEV>=0?'positive':'negative'}">${Number.isFinite(testEV)?money(testEV):'—'}</b><small>Assumed payout ${money(assumed)} per winning contract; not a live quote.</small></div></div>
+        <p class="sih-calc-caption">Holdout windows are chronologically later than training windows. Flat first signals are excluded from UP/DOWN strategy rows. The test sample is a single historical holdout, not proof of future performance; overlapping mode also contains dependent observations.</p>`;
+    }
+
     renderRanking();
   }
 
