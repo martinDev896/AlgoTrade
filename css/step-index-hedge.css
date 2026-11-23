@@ -13,3 +13,11 @@
 .sih-pattern-note b{color:#263449;font-size:.76rem}
 .sih-pattern-note small{font-size:.65rem;line-height:1.5;color:#8792a1}
 .sih-table{min-width:1080px}
+
+/* Phase 4: make the expanded 15-column ranking readable without header collisions. */
+.sih-table{min-width:1260px;table-layout:auto}
+.sih-table th{line-height:1.35;vertical-align:bottom;white-space:normal;min-width:68px}
+.sih-table th:nth-child(2){min-width:120px}
+.sih-table th:nth-child(10){min-width:105px}
+.sih-table td{vertical-align:middle}
+.sih-pattern-note span{line-height:1.45}
