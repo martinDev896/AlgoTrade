@@ -21,3 +21,6 @@
 .sih-table th:nth-child(10){min-width:105px}
 .sih-table td{vertical-align:middle}
 .sih-pattern-note span{line-height:1.45}
+
+/* Phase 5 — delayed-entry analysis */
+.sih-phase5-card{min-width:0}.sih-delayed-grid{display:grid;gap:14px;min-width:0}.sih-delayed-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.sih-delayed-summary>div{background:var(--sih-soft,#f5f7fb);border:1px solid var(--sih-border,#e5eaf2);border-radius:9px;padding:12px;min-width:0}.sih-delayed-summary span{display:block;color:var(--sih-muted,#718096);font-size:11px;margin-bottom:6px}.sih-delayed-summary b{font-size:17px;overflow-wrap:anywhere}.sih-delayed-table-wrap{width:100%;overflow-x:auto}.sih-delayed-table{width:100%;border-collapse:collapse;min-width:560px;font-size:12px}.sih-delayed-table th,.sih-delayed-table td{padding:11px 12px;text-align:left;border-bottom:1px solid var(--sih-border,#e5eaf2);white-space:nowrap}.sih-delayed-table th{color:var(--sih-muted,#718096);font-size:10px;text-transform:uppercase}.sih-delayed-table small{color:var(--sih-muted,#718096)}@media(max-width:760px){.sih-delayed-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.sih-delayed-summary b{font-size:15px}}
