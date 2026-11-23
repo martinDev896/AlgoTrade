@@ -11,7 +11,7 @@
     scan: $('sih-scan'), one: $('sih-analyse-one'), status: $('sih-status'), progress: $('sih-progress'),
     ranking: $('sih-ranking'), subtitle: $('sih-selected-subtitle'), score: $('sih-selected-score'),
     metrics: $('sih-metrics'), distribution: $('sih-distribution'), calculator: $('sih-calculator'),
-    paperStatus: $('sih-paper-status'), paperStats: $('sih-paper-stats'), paperLog: $('sih-paper-log')
+    paperStatus: $('sih-paper-status'), paperStats: $('sih-paper-stats'), paperLog: $('sih-paper-log'), delayed: $('sih-delayed-analysis')
   };
   if (!el.scan || typeof derivAPI === 'undefined') return;
 
@@ -21,6 +21,7 @@
   const pct = (n, d) => d ? (100 * n / d) : 0;
   const decimalsFor = pip => { const s = String(pip ?? 0.001), i = s.indexOf('.'); return i < 0 ? 0 : s.length - i - 1; };
   const norm = (v, decimals) => Number(Number(v).toFixed(decimals));
+  const toUnits = (v, decimals) => Math.round(Number(v) * (10 ** decimals)); // integer pip units for exact comparisons
   const isStepIndex = s => s && s.marketCode === 'synthetic_index' && (/step/i.test(s.displayName || '') || /^stp/i.test(s.symbol || ''));
   const stepMarkets = () => (window.AppState?.allSymbols || []).filter(isStepIndex).sort((a,b) => a.displayName.localeCompare(b.displayName, undefined, {numeric:true}));
   const sampleSize = () => Math.max(100, Number(el.sample.value) || 500);
@@ -55,7 +56,7 @@
     // Non-overlap advances by two ticks, so observations do not share prices.
     const stride = method === 'nonoverlap' ? 2 : 1;
     for (let i = 0; i + 2 < prices.length; i += stride) {
-      const start = norm(prices[i], decimals), middle = norm(prices[i + 1], decimals), end = norm(prices[i + 2], decimals);
+      const start = toUnits(prices[i], decimals), middle = toUnits(prices[i + 1], decimals), end = toUnits(prices[i + 2], decimals);
       out.total++;
       const first = middle > start ? 1 : middle < start ? -1 : 0;
       const second = end > middle ? 1 : end < middle ? -1 : 0;
@@ -87,21 +88,42 @@
     return out;
   }
 
+  function classifyDelayedEntry(prices, decimals, method = 'overlap') {
+    // Signal is P0→P1; hypothetical entry is P1; expiry is P3 (two ticks later).
+    // Four-quote windows; non-overlap advances three ticks to avoid shared quotes.
+    const out = { total:0, signalUp:0, signalDown:0, signalFlat:0, upRise:0, upFall:0, upZero:0, downRise:0, downFall:0, downZero:0, overallRise:0, overallFall:0, overallZero:0 };
+    const stride = method === 'nonoverlap' ? 3 : 1;
+    for (let i=0; i+3<prices.length; i+=stride) {
+      const p0=toUnits(prices[i],decimals), p1=toUnits(prices[i+1],decimals), p3=toUnits(prices[i+3],decimals);
+      const signal=Math.sign(p1-p0), outcome=Math.sign(p3-p1); out.total++;
+      if(signal>0) out.signalUp++; else if(signal<0) out.signalDown++; else out.signalFlat++;
+      if(outcome>0) out.overallRise++; else if(outcome<0) out.overallFall++; else out.overallZero++;
+      if(signal>0) { if(outcome>0) out.upRise++; else if(outcome<0) out.upFall++; else out.upZero++; }
+      if(signal<0) { if(outcome>0) out.downRise++; else if(outcome<0) out.downFall++; else out.downZero++; }
+    }
+    return out;
+  }
+
   async function analyseMarket(meta, count, token, method) {
-    // Deriv historical tick requests are capped at 5,000 ticks. In non-overlap
-    // mode this limits the available independent two-tick pairs to 2,499.
-    const requestedTicks = method === 'nonoverlap' ? Math.min(5000, count * 2 + 1) : Math.min(5000, count + 2);
+    // Phase 5 needs four quotes per delayed-entry observation.
+    const requestedTicks = method === 'nonoverlap' ? Math.min(5000, count * 3 + 1) : Math.min(5000, count + 3);
     const response = await derivAPI.send({ ticks_history: meta.symbol, style: 'ticks', count: requestedTicks, end: 'latest' });
     if (response.error) throw new Error(response.error.message || 'History request failed');
     const prices = (response.history?.prices || response.prices || []).map(Number).filter(Number.isFinite);
     if (prices.length < 3) throw new Error('Insufficient historical ticks returned');
-    const stats = classify(prices, decimalsFor(meta.pipSize), method);
+    const decimals = decimalsFor(meta.pipSize);
+    // Keep the original simultaneous-entry sample at the requested pair count,
+    // while the delayed-entry study uses its separate four-quote windows.
+    const mainTickCount = method === 'nonoverlap' ? count * 2 + 1 : count + 2;
+    const mainPrices = prices.slice(-Math.min(prices.length, mainTickCount));
+    const stats = classify(mainPrices, decimals, method);
+    const delayed = classifyDelayedEntry(prices, decimals, method);
     const split = Math.max(1, Math.floor(stats.total * 0.8));
-    const recentStart = method === 'nonoverlap' ? Math.min(prices.length - 3, split * 2) : Math.min(prices.length - 3, split);
-    const recentPrices = prices.slice(recentStart);
+    const recentStart = method === 'nonoverlap' ? Math.min(mainPrices.length - 3, split * 2) : Math.min(mainPrices.length - 3, split);
+    const recentPrices = mainPrices.slice(recentStart);
     const recent = classify(recentPrices, decimalsFor(meta.pipSize), method);
     const earlier = { total: stats.total - recent.total, zero: stats.zero - recent.zero };
-    return { symbol: meta.symbol, name: meta.displayName, pipSize: meta.pipSize, requested: count, requestedTicks, earlier, recent: { total: recent.total, zero: recent.zero }, ...stats, capturedAt: Date.now() };
+    return { symbol: meta.symbol, name: meta.displayName, pipSize: meta.pipSize, requested: count, requestedTicks, earlier, recent: { total: recent.total, zero: recent.zero }, delayed, ...stats, capturedAt: Date.now() };
   }
 
   async function runScan(onlySelected = false) {
@@ -146,11 +168,11 @@
       if (a.error && !b.error) return 1; if (!a.error && b.error) return -1;
       return pct(a.zero,a.total) - pct(b.zero,b.total) || b.total - a.total;
     });
-    if (!rows.length) { el.ranking.innerHTML = '<tr><td colspan="15" class="sih-empty">Run an analysis to compare markets.</td></tr>'; return; }
+    if (!rows.length) { el.ranking.innerHTML = '<tr><td colspan="18" class="sih-empty">Run an analysis to compare markets.</td></tr>'; return; }
     el.ranking.innerHTML = rows.map((r,i) => {
       const [label, cls] = assessment(r), activeRow = r.symbol === selectedSymbol ? ' is-selected' : '';
-      const reversalRate = r.continuation + r.reversal ? pct(r.reversal,r.continuation+r.reversal) : NaN; const reversalEntryRate = r.reversal ? pct(r.reversalToEntry,r.reversal) : NaN; const continuationRate = r.continuation + r.reversal ? pct(r.continuation,r.continuation+r.reversal) : NaN; const recentRate = r.recent?.total ? pct(r.recent.zero,r.recent.total) : NaN; const earlierRate = r.earlier?.total ? pct(r.earlier.zero,r.earlier.total) : NaN; const change = Number.isFinite(recentRate) && Number.isFinite(earlierRate) ? recentRate-earlierRate : NaN; const stakeNow = Math.max(0, Number(el.stake.value)||0); const payout = r.quotes?.ready ? (r.rise/r.total)*(r.quotes.rise.payout-2*stakeNow) + (r.fall/r.total)*(r.quotes.fall.payout-2*stakeNow) - (r.zero/r.total)*2*stakeNow : NaN;
-      return `<tr class="${activeRow}" data-symbol="${r.symbol}"><td>${i+1}</td><td><button class="sih-market-link" data-symbol="${r.symbol}">${r.name}</button><small>${r.symbol}</small></td><td>${r.total || '—'}</td><td>${r.total ? pct(r.rise,r.total).toFixed(1)+'%' : '—'}</td><td>${r.total ? pct(r.fall,r.total).toFixed(1)+'%' : '—'}</td><td class="sih-zero">${r.total ? pct(r.zero,r.total).toFixed(2)+'%' : '—'}</td><td>${r.total ? pct(r.returned,r.total).toFixed(2)+'%' : '—'}</td><td>${r.total ? pct(r.flat,r.total).toFixed(2)+'%' : '—'}</td><td>${Number.isFinite(reversalRate) ? reversalRate.toFixed(1)+'%' : '—'}</td><td>${Number.isFinite(reversalEntryRate) ? reversalEntryRate.toFixed(1)+'%' : '—'}</td><td>${Number.isFinite(continuationRate) ? continuationRate.toFixed(1)+'%' : '—'}</td><td>${Number.isFinite(recentRate) ? recentRate.toFixed(2)+'%' : '—'}</td><td>${Number.isFinite(change) ? (change>0?'+':'')+change.toFixed(2)+' pp' : '—'}</td><td>${Number.isFinite(payout) ? money(payout) : 'Quote needed'}</td><td><span class="sih-assessment ${cls}">${r.error ? r.error : label}</span></td></tr>`;
+      const reversalRate = r.continuation + r.reversal ? pct(r.reversal,r.continuation+r.reversal) : NaN; const reversalEntryRate = r.reversal ? pct(r.reversalToEntry,r.reversal) : NaN; const continuationRate = r.continuation + r.reversal ? pct(r.continuation,r.continuation+r.reversal) : NaN; const recentRate = r.recent?.total ? pct(r.recent.zero,r.recent.total) : NaN; const earlierRate = r.earlier?.total ? pct(r.earlier.zero,r.earlier.total) : NaN; const change = Number.isFinite(recentRate) && Number.isFinite(earlierRate) ? recentRate-earlierRate : NaN; const stakeNow = Math.max(0, Number(el.stake.value)||0); const payout = r.quotes?.ready ? (r.rise/r.total)*(r.quotes.rise.payout-2*stakeNow) + (r.fall/r.total)*(r.quotes.fall.payout-2*stakeNow) - (r.zero/r.total)*2*stakeNow : NaN; const d=r.delayed||{};
+      return `<tr class="${activeRow}" data-symbol="${r.symbol}"><td>${i+1}</td><td><button class="sih-market-link" data-symbol="${r.symbol}">${r.name}</button><small>${r.symbol}</small></td><td>${r.total || '—'}</td><td>${r.total ? pct(r.rise,r.total).toFixed(1)+'%' : '—'}</td><td>${r.total ? pct(r.fall,r.total).toFixed(1)+'%' : '—'}</td><td class="sih-zero">${r.total ? pct(r.zero,r.total).toFixed(2)+'%' : '—'}</td><td>${r.total ? pct(r.returned,r.total).toFixed(2)+'%' : '—'}</td><td>${r.total ? pct(r.flat,r.total).toFixed(2)+'%' : '—'}</td><td>${Number.isFinite(reversalRate) ? reversalRate.toFixed(1)+'%' : '—'}</td><td>${Number.isFinite(reversalEntryRate) ? reversalEntryRate.toFixed(1)+'%' : '—'}</td><td>${Number.isFinite(continuationRate) ? continuationRate.toFixed(1)+'%' : '—'}</td><td>${d.total ? pct(d.overallZero,d.total).toFixed(2)+'%' : '—'}</td><td>${d.signalUp ? pct(d.upZero,d.signalUp).toFixed(2)+'%' : '—'}</td><td>${d.signalDown ? pct(d.downZero,d.signalDown).toFixed(2)+'%' : '—'}</td><td>${Number.isFinite(recentRate) ? recentRate.toFixed(2)+'%' : '—'}</td><td>${Number.isFinite(change) ? (change>0?'+':'')+change.toFixed(2)+' pp' : '—'}</td><td>${Number.isFinite(payout) ? money(payout) : 'Quote needed'}</td><td><span class="sih-assessment ${cls}">${r.error ? r.error : label}</span></td></tr>`;
     }).join('');
     el.ranking.querySelectorAll('[data-symbol]').forEach(btn => btn.addEventListener('click', () => { el.market.value = btn.dataset.symbol; setSelected(btn.dataset.symbol); renderRanking(); }));
   }
@@ -190,6 +212,12 @@
     const expected = (r.rise/r.total)*riseNet + (r.fall/r.total)*fallNet + (r.zero/r.total)*(-totalStake);
     const avgWinPayout = (risePayout+fallPayout)/2; const breakEvenZero = avgWinPayout > 0 ? Math.max(0,1-(totalStake/avgWinPayout))*100 : 0;
     el.calculator.innerHTML = `<div class="sih-calc-grid"><div><span>Combined stake</span><b>${money(totalStake)}</b></div><div><span>Rise wins / net</span><b class="${riseNet>=0?'positive':'negative'}">${money(risePayout)} / ${money(riseNet)}</b></div><div><span>Fall wins / net</span><b class="${fallNet>=0?'positive':'negative'}">${money(fallPayout)} / ${money(fallNet)}</b></div><div><span>Double-loss result</span><b class="negative">-${money(totalStake)}</b></div><div><span>Break-even max zero rate*</span><b>${breakEvenZero.toFixed(2)}%</b></div><div><span>Quote status</span><b>${r.quotes?.ready ? 'Actual Deriv quotes' : 'Assumed payout'}</b></div></div><div class="sih-expectancy"><span>Estimated net per paired entry*</span><b class="${expected>=0?'positive':'negative'}">${money(expected)}</b></div><p class="sih-calc-caption">${r.quotes?.ready ? `Rise payout ${money(risePayout)}; Fall payout ${money(fallPayout)} (${r.quotes.currency}).` : `Assumed winning payout ${money(payout)} on either side.`} *Uses observed rise/fall/zero frequencies; excludes quote movement and different entry spots.</p>`;
+    const d = r.delayed || {};
+    const delayedRows = [
+      ['After first tick UP', d.signalUp || 0, d.upRise || 0, d.upFall || 0, d.upZero || 0],
+      ['After first tick DOWN', d.signalDown || 0, d.downRise || 0, d.downFall || 0, d.downZero || 0]
+    ];
+    if (el.delayed) el.delayed.innerHTML = `<div class="sih-delayed-summary"><div><span>Delayed-entry windows</span><b>${d.total || 0}</b></div><div><span>Delayed Rise</span><b>${pct(d.overallRise || 0,d.total || 0).toFixed(2)}%</b></div><div><span>Delayed Fall</span><b>${pct(d.overallFall || 0,d.total || 0).toFixed(2)}%</b></div><div><span>Delayed zero-net</span><b class="negative">${pct(d.overallZero || 0,d.total || 0).toFixed(2)}%</b></div></div><div class="sih-delayed-table-wrap"><table class="sih-delayed-table"><thead><tr><th>First movement signal</th><th>Signals</th><th>2-tick Rise</th><th>2-tick Fall</th><th>2-tick zero</th></tr></thead><tbody>${delayedRows.map(([label,n,up,down,zero])=>`<tr><td>${label}</td><td>${n}</td><td>${n?pct(up,n).toFixed(2)+'%':'—'} <small>(${up})</small></td><td>${n?pct(down,n).toFixed(2)+'%':'—'} <small>(${down})</small></td><td>${n?pct(zero,n).toFixed(2)+'%':'—'} <small>(${zero})</small></td></tr>`).join('')}</tbody></table></div><p class="sih-calc-caption">Signal: P0 → P1; hypothetical entry: P1; expiry: P3. First-flat signals are included in overall outcomes but excluded from directional rows. ${r.method === 'nonoverlap' ? 'Four-quote windows advance by three ticks to avoid shared quotes.' : 'Four-quote windows overlap and are descriptive, not independent trials.'} Exact comparisons use integer pip units.</p>`;
     renderRanking();
   }
 
