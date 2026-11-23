@@ -50,7 +50,7 @@
   }
 
   function classify(prices, decimals, method = 'overlap') {
-    const out = { total: 0, rise: 0, fall: 0, zero: 0, returned: 0, flat: 0, firstUp: 0, firstDown: 0, firstFlat: 0, continuation: 0, reversal: 0, secondFlat: 0, upThenDown: 0, downThenUp: 0, upThenUp: 0, downThenDown: 0, examples: [], method };
+    const out = { total: 0, rise: 0, fall: 0, zero: 0, returned: 0, flat: 0, firstUp: 0, firstDown: 0, firstFlat: 0, continuation: 0, reversal: 0, secondFlat: 0, upThenDown: 0, downThenUp: 0, upThenUp: 0, downThenDown: 0, upThenFlat: 0, downThenFlat: 0, reversalToEntry: 0, reversalToRise: 0, reversalToFall: 0, reversalToZero: 0, examples: [], method };
     // Both modes compare an entry quote with the quote exactly two ticks later.
     // Non-overlap advances by two ticks, so observations do not share prices.
     const stride = method === 'nonoverlap' ? 2 : 1;
@@ -60,10 +60,20 @@
       const first = middle > start ? 1 : middle < start ? -1 : 0;
       const second = end > middle ? 1 : end < middle ? -1 : 0;
       if (first > 0) out.firstUp++; else if (first < 0) out.firstDown++; else out.firstFlat++;
-      if (second === 0) out.secondFlat++;
+      if (second === 0) {
+        out.secondFlat++;
+        if (first > 0) out.upThenFlat++; else if (first < 0) out.downThenFlat++;
+      }
       if (first !== 0 && second !== 0) {
         if (first === second) { out.continuation++; if (first > 0) out.upThenUp++; else out.downThenDown++; }
-        else { out.reversal++; if (first > 0) out.upThenDown++; else out.downThenUp++; }
+        else {
+          out.reversal++;
+          if (first > 0) out.upThenDown++; else out.downThenUp++;
+          // Classify the final endpoint independently from the direction pattern.
+          if (end === start) { out.reversalToEntry++; }
+          else if (end > start) out.reversalToRise++;
+          else out.reversalToFall++;
+        }
       }
       if (end > start) out.rise++;
       else if (end < start) out.fall++;
@@ -72,6 +82,7 @@
         if (middle !== start) out.returned++;
         else out.flat++;
       }
+      if (first !== 0 && second !== 0 && end === start) out.reversalToZero++;
     }
     return out;
   }
@@ -135,11 +146,11 @@
       if (a.error && !b.error) return 1; if (!a.error && b.error) return -1;
       return pct(a.zero,a.total) - pct(b.zero,b.total) || b.total - a.total;
     });
-    if (!rows.length) { el.ranking.innerHTML = '<tr><td colspan="14" class="sih-empty">Run an analysis to compare markets.</td></tr>'; return; }
+    if (!rows.length) { el.ranking.innerHTML = '<tr><td colspan="15" class="sih-empty">Run an analysis to compare markets.</td></tr>'; return; }
     el.ranking.innerHTML = rows.map((r,i) => {
       const [label, cls] = assessment(r), activeRow = r.symbol === selectedSymbol ? ' is-selected' : '';
-      const reversalRate = r.continuation + r.reversal ? pct(r.reversal,r.continuation+r.reversal) : NaN; const continuationRate = r.continuation + r.reversal ? pct(r.continuation,r.continuation+r.reversal) : NaN; const recentRate = r.recent?.total ? pct(r.recent.zero,r.recent.total) : NaN; const earlierRate = r.earlier?.total ? pct(r.earlier.zero,r.earlier.total) : NaN; const change = Number.isFinite(recentRate) && Number.isFinite(earlierRate) ? recentRate-earlierRate : NaN; const stakeNow = Math.max(0, Number(el.stake.value)||0); const payout = r.quotes?.ready ? (r.rise/r.total)*(r.quotes.rise.payout-2*stakeNow) + (r.fall/r.total)*(r.quotes.fall.payout-2*stakeNow) - (r.zero/r.total)*2*stakeNow : NaN;
-      return `<tr class="${activeRow}" data-symbol="${r.symbol}"><td>${i+1}</td><td><button class="sih-market-link" data-symbol="${r.symbol}">${r.name}</button><small>${r.symbol}</small></td><td>${r.total || '—'}</td><td>${r.total ? pct(r.rise,r.total).toFixed(1)+'%' : '—'}</td><td>${r.total ? pct(r.fall,r.total).toFixed(1)+'%' : '—'}</td><td class="sih-zero">${r.total ? pct(r.zero,r.total).toFixed(2)+'%' : '—'}</td><td>${r.total ? pct(r.returned,r.total).toFixed(2)+'%' : '—'}</td><td>${r.total ? pct(r.flat,r.total).toFixed(2)+'%' : '—'}</td><td>${Number.isFinite(reversalRate) ? reversalRate.toFixed(1)+'%' : '—'}</td><td>${Number.isFinite(continuationRate) ? continuationRate.toFixed(1)+'%' : '—'}</td><td>${Number.isFinite(recentRate) ? recentRate.toFixed(2)+'%' : '—'}</td><td>${Number.isFinite(change) ? (change>0?'+':'')+change.toFixed(2)+' pp' : '—'}</td><td>${Number.isFinite(payout) ? money(payout) : 'Quote needed'}</td><td><span class="sih-assessment ${cls}">${r.error ? r.error : label}</span></td></tr>`;
+      const reversalRate = r.continuation + r.reversal ? pct(r.reversal,r.continuation+r.reversal) : NaN; const reversalEntryRate = r.reversal ? pct(r.reversalToEntry,r.reversal) : NaN; const continuationRate = r.continuation + r.reversal ? pct(r.continuation,r.continuation+r.reversal) : NaN; const recentRate = r.recent?.total ? pct(r.recent.zero,r.recent.total) : NaN; const earlierRate = r.earlier?.total ? pct(r.earlier.zero,r.earlier.total) : NaN; const change = Number.isFinite(recentRate) && Number.isFinite(earlierRate) ? recentRate-earlierRate : NaN; const stakeNow = Math.max(0, Number(el.stake.value)||0); const payout = r.quotes?.ready ? (r.rise/r.total)*(r.quotes.rise.payout-2*stakeNow) + (r.fall/r.total)*(r.quotes.fall.payout-2*stakeNow) - (r.zero/r.total)*2*stakeNow : NaN;
+      return `<tr class="${activeRow}" data-symbol="${r.symbol}"><td>${i+1}</td><td><button class="sih-market-link" data-symbol="${r.symbol}">${r.name}</button><small>${r.symbol}</small></td><td>${r.total || '—'}</td><td>${r.total ? pct(r.rise,r.total).toFixed(1)+'%' : '—'}</td><td>${r.total ? pct(r.fall,r.total).toFixed(1)+'%' : '—'}</td><td class="sih-zero">${r.total ? pct(r.zero,r.total).toFixed(2)+'%' : '—'}</td><td>${r.total ? pct(r.returned,r.total).toFixed(2)+'%' : '—'}</td><td>${r.total ? pct(r.flat,r.total).toFixed(2)+'%' : '—'}</td><td>${Number.isFinite(reversalRate) ? reversalRate.toFixed(1)+'%' : '—'}</td><td>${Number.isFinite(reversalEntryRate) ? reversalEntryRate.toFixed(1)+'%' : '—'}</td><td>${Number.isFinite(continuationRate) ? continuationRate.toFixed(1)+'%' : '—'}</td><td>${Number.isFinite(recentRate) ? recentRate.toFixed(2)+'%' : '—'}</td><td>${Number.isFinite(change) ? (change>0?'+':'')+change.toFixed(2)+' pp' : '—'}</td><td>${Number.isFinite(payout) ? money(payout) : 'Quote needed'}</td><td><span class="sih-assessment ${cls}">${r.error ? r.error : label}</span></td></tr>`;
     }).join('');
     el.ranking.querySelectorAll('[data-symbol]').forEach(btn => btn.addEventListener('click', () => { el.market.value = btn.dataset.symbol; setSelected(btn.dataset.symbol); renderRanking(); }));
   }
@@ -158,6 +169,11 @@
       ['First-tick up', `${pct(r.firstUp,r.total).toFixed(2)}%`, `${r.firstUp.toLocaleString()} first legs rose`],
       ['First-tick down', `${pct(r.firstDown,r.total).toFixed(2)}%`, `${r.firstDown.toLocaleString()} first legs fell`],
       ['Direction reversal', `${pct(r.reversal,r.continuation+r.reversal).toFixed(2)}%`, `${r.reversal.toLocaleString()} of non-flat two-leg paths`],
+      ['Reversals returning to entry', `${pct(r.reversalToEntry,r.reversal).toFixed(2)}%`, `${r.reversalToEntry.toLocaleString()} of ${r.reversal.toLocaleString()} directional reversals`],
+      ['Reversals ending above entry', `${r.reversal ? pct(r.reversalToRise,r.reversal).toFixed(2) : '0.00'}%`, `${r.reversalToRise.toLocaleString()} observations`],
+      ['Reversals ending below entry', `${r.reversal ? pct(r.reversalToFall,r.reversal).toFixed(2) : '0.00'}%`, `${r.reversalToFall.toLocaleString()} observations`],
+      ['Up then flat', `${pct(r.upThenFlat,r.total).toFixed(2)}%`, `${r.upThenFlat.toLocaleString()} observations`],
+      ['Down then flat', `${pct(r.downThenFlat,r.total).toFixed(2)}%`, `${r.downThenFlat.toLocaleString()} observations`],
       ['Direction continuation', `${pct(r.continuation,r.continuation+r.reversal).toFixed(2)}%`, `${r.continuation.toLocaleString()} of non-flat two-leg paths`],
       ['Up then down', `${pct(r.upThenDown,r.total).toFixed(2)}%`, `${r.upThenDown.toLocaleString()} observations`],
       ['Down then up', `${pct(r.downThenUp,r.total).toFixed(2)}%`, `${r.downThenUp.toLocaleString()} observations`],
@@ -167,7 +183,7 @@
     ].map(([k,v,n]) => `<div class="sih-metric"><span>${k}</span><b>${v}</b><small>${n}</small></div>`).join('');
     el.distribution.innerHTML = [
       ['Rise',r.rise,'rise'],['Fall',r.fall,'fall'],['Zero net',r.zero,'zero']
-    ].map(([label,n,cls]) => `<div class="sih-dist-row"><div><span>${label}</span><b>${pct(n,r.total).toFixed(2)}%</b></div><div class="sih-dist-track"><i class="${cls}" style="width:${pct(n,r.total)}%"></i></div></div>`).join('') + `<div class="sih-pattern-note"><b>Two-leg direction patterns</b><span>Up → Up: ${r.upThenUp} (${pct(r.upThenUp,r.firstUp).toFixed(1)}% of first-up) · Up → Down: ${r.upThenDown} (${pct(r.upThenDown,r.firstUp).toFixed(1)}%)</span><span>Down → Down: ${r.downThenDown} (${pct(r.downThenDown,r.firstDown).toFixed(1)}% of first-down) · Down → Up: ${r.downThenUp} (${pct(r.downThenUp,r.firstDown).toFixed(1)}%)</span><small>Reversal/continuation rates exclude observations where either individual leg was flat. A reversal does not always finish at the entry price; zero-net outcomes are measured separately.</small></div>`;
+    ].map(([label,n,cls]) => `<div class="sih-dist-row"><div><span>${label}</span><b>${pct(n,r.total).toFixed(2)}%</b></div><div class="sih-dist-track"><i class="${cls}" style="width:${pct(n,r.total)}%"></i></div></div>`).join('') + `<div class="sih-pattern-note"><b>Two-leg direction patterns</b><span>Up → Up: ${r.upThenUp} (${pct(r.upThenUp,r.firstUp).toFixed(1)}% of first-up) · Up → Down: ${r.upThenDown} (${pct(r.upThenDown,r.firstUp).toFixed(1)}%)</span><span>Down → Down: ${r.downThenDown} (${pct(r.downThenDown,r.firstDown).toFixed(1)}% of first-down) · Down → Up: ${r.downThenUp} (${pct(r.downThenUp,r.firstDown).toFixed(1)}%)</span><span>Flat second leg after Up: ${r.upThenFlat} · after Down: ${r.downThenFlat}</span><span>Of ${r.reversal} directional reversals: ${r.reversalToEntry} ended exactly at entry, ${r.reversalToRise} ended above entry, and ${r.reversalToFall} ended below entry.</span><small>Directional reversal and return-to-entry are separate measurements. The hedge double-loss condition is determined only by final price equalling the starting price, regardless of the path.</small></div>`;
     const q = r.zero / r.total, success = 1-q, totalStake = 2*stake;
     const risePayout = r.quotes?.ready ? r.quotes.rise.payout : payout; const fallPayout = r.quotes?.ready ? r.quotes.fall.payout : payout;
     const riseNet = risePayout-totalStake, fallNet = fallPayout-totalStake;
