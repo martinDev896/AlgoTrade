@@ -2,3 +2,8 @@
 @media(max-width:1100px){.sih-controls{grid-template-columns:repeat(2,minmax(0,1fr))}.sih-actions{grid-column:1/-1}.sih-grid{grid-template-columns:1fr}}
 @media(max-width:650px){.sih-page{gap:10px}.sih-header{align-items:flex-start;flex-direction:column;gap:8px}.sih-header h1{font-size:1.3rem}.sih-card{padding:12px;border-radius:10px}.sih-controls{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.sih-controls label{font-size:.67rem}.sih-actions{display:grid;grid-template-columns:1fr 1fr}.sih-primary,.sih-secondary{padding:10px 7px;font-size:.72rem}.sih-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.sih-metric{padding:9px}.sih-metric b{font-size:.93rem}.sih-paper-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.sih-section-heading{gap:8px}.sih-section-heading h2{font-size:.92rem}.sih-section-heading p{font-size:.68rem}.sih-mode-pill{font-size:.62rem}.sih-status-row{font-size:.68rem}.sih-log-row{grid-template-columns:70px 1fr;gap:5px}.sih-log-row span:last-child{grid-column:2}}
 @media(max-width:360px){.sih-controls{grid-template-columns:1fr}.sih-actions{grid-template-columns:1fr}.sih-metrics,.sih-paper-stats{grid-template-columns:1fr}.sih-calc-grid{grid-template-columns:1fr}}
+
+/* Phase 2 analysis controls and quote status */
+#sih-refresh-quotes{margin-top:12px;width:100%;}
+#sih-quote-status{min-height:1.2em;}
+@media(max-width:650px){.sih-table{min-width:1120px}.sih-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
