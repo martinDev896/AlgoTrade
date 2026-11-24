@@ -37,3 +37,10 @@
 .sih-validation-result span,.sih-validation-result small{display:block;color:#788394;font-size:.66rem;line-height:1.45}
 .sih-validation-result b{display:block;margin:5px 0;font-size:1rem;overflow-wrap:anywhere}
 @media(max-width:650px){.sih-validation-head{flex-direction:column}.sih-validation-result{grid-template-columns:1fr}.sih-validation .sih-delayed-table{min-width:650px}}
+
+/* Phase 7 — expanding walk-forward validation */
+.sih-wf-block{display:grid;gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid #e8edf3;min-width:0}
+.sih-wf-block h3{font-size:.9rem;margin:0 0 4px;color:#263449}
+.sih-wf-block p{font-size:.7rem;color:#7a8493;margin:0;line-height:1.45}
+.sih-wf-block .sih-delayed-table{min-width:760px}
+@media(max-width:650px){.sih-wf-block .sih-delayed-table{min-width:760px}}
