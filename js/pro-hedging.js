@@ -440,8 +440,13 @@
     el.cLosses.textContent = String(s.losses);
   }
 
+  function clearTradeHistory() {
+    el.histBody.innerHTML = "";
+    rowEls.clear();
+    el.histEmpty.classList.remove("hidden");
+  }
+
   function resetDash(cfg) {
-    el.histBody.innerHTML = ""; rowEls.clear(); el.histEmpty.classList.remove("hidden");
     render({ mode: "stopped", reconnecting: false, entryCount: 0, entryNeed: cfg.nEntry, patCount: 0, patNeed: cfg.recPattern,
       recCount: 0, recNeed: cfg.recConfirm, recPhase: null, recContract: null, recTrades: 0, maxRec: cfg.maxRec,
       level: 0, stake: cfg.stake, nextRecStake: Math.round(cfg.stake * cfg.mult * 100) / 100,
@@ -491,6 +496,9 @@
 
     clearMsg();
     lastCfg = cfg;
+    // Keep the previous session's trade history visible while stopped;
+    // start a fresh history only when the trader explicitly runs again.
+    clearTradeHistory();
     resetDash(cfg);
     setRunningUI(true);
     announce(true);
@@ -500,6 +508,8 @@
       trade: upsertRow,
       finished: () => {
         session = null; announce(false); setRunningUI(false); el.pause.textContent = "⏸ Pause";
+        // Reset live dashboard figures, but retain the completed session's trade rows
+        // so the trader can review them until the next Run click.
         if (lastCfg) resetDash(lastCfg);
       },
     });
