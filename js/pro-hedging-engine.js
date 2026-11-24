@@ -74,7 +74,13 @@ function startHedgeEngine(deps, cfg, hooks) {
   // (unless the "when the limit is reached" setting says otherwise).
   const rows = [];                 // every contract bought: the trade history
   let rowSeq = 0;
-  let running = true, ended = false;
+  let running = true, paused = false, ended = false;
+  let resumeWaiters = [];
+  function waitWhilePaused() {
+    if (!paused || !running) return Promise.resolve();
+    return new Promise((resolve) => resumeWaiters.push(resolve));
+  }
+  function releasePausedWaiters() { const q = resumeWaiters; resumeWaiters = []; q.forEach((resolve) => resolve()); }
   let entryBusy = false;           // an entry cycle (two contracts) is in progress
   let activeOps = 0;               // entry cycles / recovery loops currently executing
   let inflight = 0;                // contracts bought and not yet confirmed
@@ -92,7 +98,9 @@ function startHedgeEngine(deps, cfg, hooks) {
 
   // ---------- Contract specs ----------
   const initialSpec = (r) => ({ side: r.side, contract: r.contract, barrier: r.barrier, label: r.name + " " + r.barrier, duration: cfg.duration });
+  const recoveryRule = () => (cfg.recoverySide === "UNDER" ? UNDER : OVER);
   const recoverySpec = (r) => ({ side: r.side, contract: r.contract, barrier: r.recBarrier, label: r.name + " " + r.recBarrier, duration: cfg.recDuration });
+  const selectedRecoverySpec = () => recoverySpec(recoveryRule());
   const specLoses = (spec, d) => (spec.contract === "DIGITOVER" ? !(d > spec.barrier) : !(d < spec.barrier));
   const ruleOf = (side) => (side === "OVER" ? OVER : UNDER);
   const recStake = (leg) => round2(S * Math.pow(cfg.mult, leg.level));
@@ -117,7 +125,7 @@ function startHedgeEngine(deps, cfg, hooks) {
       else { curStake = rec.openStake || recStake(rec); nextRec = round2(S * Math.pow(cfg.mult, rec.level + 1)); }
     }
     return {
-      mode: st.mode, running: running, reconnecting: reconnectNoticeOn,
+      mode: paused ? "paused" : st.mode, running: running, paused: paused, reconnecting: reconnectNoticeOn,
       symbol: cfg.symbol, lastDigit: lastDigit,
       entryCount: st.mode === "waiting" ? Math.min(st.entryCount, cfg.nEntry) : 0, entryNeed: cfg.nEntry,
       patCount: rec && rec.phase === "pattern" ? Math.min(rec.patCount, rec.patternNeed) : 0, patNeed: rec ? rec.patternNeed : PAT,
@@ -324,15 +332,15 @@ function startHedgeEngine(deps, cfg, hooks) {
     if (!running || ended) return [];
     const out = [];
     if (rec) {
-      if (rec.phase !== "open") out.push({ spec: recoverySpec(ruleOf(rec.side)), stake: recStake(rec) });
+      if (rec.phase !== "open") out.push({ spec: selectedRecoverySpec(), stake: recStake(rec) });
       else if (rec.phase === "open" && cfg.immediate) {
         const nx = round2(S * Math.pow(cfg.mult, rec.level + 1));   // the stake used if this trade loses
-        if (rec.trades < cfg.maxRec && nx <= cfg.maxStake) out.push({ spec: recoverySpec(ruleOf(rec.side)), stake: nx });
+        if (rec.trades < cfg.maxRec && nx <= cfg.maxStake) out.push({ spec: selectedRecoverySpec(), stake: nx });
       }
     } else if (entryBusy) {
       if (cfg.recoveryEnabled) {            // whichever side loses will need its recovery quote
         const nx = round2(S * Math.pow(cfg.mult, st.carry + 1));
-        if (nx <= cfg.maxStake) [OVER, UNDER].forEach((r) => out.push({ spec: recoverySpec(r), stake: nx }));
+        if (nx <= cfg.maxStake) out.push({ spec: selectedRecoverySpec(), stake: nx });
       }
     } else if (st.mode === "waiting") {
       [OVER, UNDER].forEach((r) => out.push({ spec: initialSpec(r), stake: S }));
@@ -466,7 +474,7 @@ function startHedgeEngine(deps, cfg, hooks) {
 
   // ---------- Ending ----------
   function maybeEnd() { if (!running && !ended && activeOps === 0 && inflight === 0) end(); }
-  function stopWith(msg) { if (msg) log(msg); running = false; }
+  function stopWith(msg) { if (msg) log(msg); paused = false; releasePausedWaiters(); running = false; }
   function end() {
     if (ended) return;
     ended = true;
@@ -485,12 +493,12 @@ function startHedgeEngine(deps, cfg, hooks) {
   }
 
   // ---------- Recovery legs ----------
-  function newLeg(side) {
-    const r = ruleOf(side);
-    return { side: side, contract: r.contract, barrier: r.recBarrier, label: r.name + " " + r.recBarrier,
+  function newLeg(sourceSide) {
+    const r = recoveryRule();
+    return { side: r.side, sourceSide: sourceSide, contract: r.contract, barrier: r.recBarrier, label: r.name + " " + r.recBarrier,
       level: 0, trades: 0, patternNeed: PAT, confirmNeed: cfg.recConfirm, strength: false, phase: PAT > 0 ? "pattern" : "confirm", patCount: 0, count: 0, placing: false, openStake: 0, cycleWon: false };
   }
-  const qualifies = (leg, d) => !specLoses(recoverySpec(ruleOf(leg.side)), d);
+  const qualifies = (leg, d) => !specLoses(selectedRecoverySpec(), d);
 
   // Take the next waiting recovery leg, or go back to waiting for a fresh entry.
   function activateNextOrWait() {
@@ -546,6 +554,8 @@ function startHedgeEngine(deps, cfg, hooks) {
       if (bal.value === null) await refreshBalance();
       const block = purchaseBlock(S, 2);
       if (block) { stopWith(block.msg); return; }
+      await waitWhilePaused();
+      if (!running) return;
       const specs = [initialSpec(OVER), initialSpec(UNDER)];
       const t0 = now();
       const tries = await Promise.all(specs.map((spec) =>
@@ -622,7 +632,7 @@ function startHedgeEngine(deps, cfg, hooks) {
         leg.phase = "open";
         setMode("recovery");
         const stake = recStake(leg);
-        const spec = recoverySpec(ruleOf(leg.side));
+        let spec = selectedRecoverySpec();
         if (!nextBuy) {
           if (bal.value === null) await refreshBalance();
           const block = recBlock(leg, stake);
@@ -630,6 +640,9 @@ function startHedgeEngine(deps, cfg, hooks) {
         }
         leg.openStake = stake;
         emitState();
+        await waitWhilePaused();
+        if (!running) return endLeg(leg, "stop");
+        spec = selectedRecoverySpec();
         const bought = await (nextBuy ? nextBuy.promise : buyOne(spec, stake));
         nextBuy = null;
         const confirmedAt = now();
@@ -673,6 +686,9 @@ function startHedgeEngine(deps, cfg, hooks) {
         if (block) { return endLeg(leg, block.kind, block.msg); }
         if (cfg.immediate) {
           // Straight away: the next buy goes out BEFORE any screen work, using the quote prepared while this trade was open.
+          await waitWhilePaused();
+          if (!running) return endLeg(leg, "stop");
+          spec = selectedRecoverySpec(); // honour a recovery-type change made while the bot was paused
           nextBuy = { promise: buyOne(spec, nStake) };
           lossSeenAt = seenAt;
           emitState();
@@ -703,7 +719,7 @@ function startHedgeEngine(deps, cfg, hooks) {
     const digit = Number(Number(t.quote).toFixed(cfg.pipDecimals).slice(-1));
     lastDigit = digit;
     if (hooks.tickDigit) hooks.tickDigit(digit);
-    if (running) {
+    if (running && !paused) {
       if (rec) {
         if (rec.phase === "pattern" && !rec.placing) {
           // Pattern (before EVERY recovery trade): P LOSING digits in a row - digits that lose the recovery contract.
@@ -768,14 +784,53 @@ function startHedgeEngine(deps, cfg, hooks) {
   emitState();
   log("Started: after " + cfg.nEntry + " digit(s) in a row with no 4 or 5, buy Over 3 + Under 6 (stake " + S.toFixed(2) + ", " + cfg.duration + " tick(s)). " +
       (cfg.recoveryEnabled
-        ? "Recovery: Over 3 -> Over 2, Under 6 -> Under 7, after " + (PAT > 0 ? PAT + " losing digit(s) then " : "") + cfg.recConfirm + " qualifying digit(s); " + (cfg.immediate ? "immediate" : "confirmed") + " re-buys, max " + cfg.maxRec + " trades."
+        ? "Recovery contract: " + (cfg.recoverySide === "UNDER" ? "Under 7" : "Over 2") + "; " + (PAT > 0 ? PAT + " losing digit(s) then " : "") + cfg.recConfirm + " qualifying digit(s); " + (cfg.immediate ? "immediate" : "confirmed") + " re-buys, max " + cfg.maxRec + " trades."
         : "Recovery is off."));
 
   return {
     done: done,
     snapshot: snapshot,
+    isPaused: function () { return paused; },
+    pause: function () {
+      if (!running || ended || paused) return;
+      paused = true;
+      log("Bot paused - current stage and recovery state are preserved.");
+      emitState();
+    },
+    resume: function () {
+      if (!running || ended || !paused) return;
+      paused = false;
+      releasePausedWaiters();
+      refreshQuotes();
+      log("Bot resumed from the previous stage.");
+      emitState();
+    },
+    setRecoverySide: function (side) {
+      if (!paused || (side !== "OVER" && side !== "UNDER")) return;
+      cfg.recoverySide = side;
+      const r = recoveryRule();
+      const updateLeg = (leg) => {
+        if (!leg) return;
+        const wasOpen = leg.phase === "open";
+        leg.side = r.side; leg.contract = r.contract; leg.barrier = r.recBarrier; leg.label = r.name + " " + r.recBarrier;
+        if (!wasOpen) { leg.patCount = 0; leg.count = 0; leg.phase = leg.patternNeed > 0 ? "pattern" : "confirm"; }
+      };
+      updateLeg(rec); recQueue.forEach(updateLeg);
+      refreshQuotes(); emitState();
+    },
+    setMarket: function (symbol, pipDecimals) {
+      if (!paused || !symbol) return;
+      cfg.symbol = symbol; cfg.pipDecimals = Number(pipDecimals) || 0;
+      quotes.forEach(closeQuote); quotes.clear(); // quote keys do not include market symbol
+      st.entryCount = 0;
+      if (rec) { rec.patCount = 0; rec.count = 0; }
+      lastDigit = null;
+      refreshQuotes(); emitState();
+      log("Market changed while paused. Recovery/martingale state retained; digit confirmation restarted on the new market.");
+    },
     stop: function () {
       if (!running) return;
+      paused = false; releasePausedWaiters();
       running = false;
       recQueue.length = 0;
       setQuotes([]);
