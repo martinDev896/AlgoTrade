@@ -25,7 +25,8 @@
     pattern: $("ph-pattern"), confirm: $("ph-confirm"), strengthPattern: $("ph-strength-pattern"), strengthConfirm: $("ph-strength-confirm"), mult: $("ph-mult"), maxRec: $("ph-maxrec"), recDur: $("ph-recdur"),
     maxStake: $("ph-maxstake"), afterLimit: $("ph-afterlimit"),
     recovery: $("ph-recovery"), immediate: $("ph-immediate"), fast: $("ph-fast"), hardStop: $("ph-hardstop"),
-    preview: $("ph-preview"), run: $("ph-run"), stop: $("ph-stop"), msg: $("ph-msg"),
+    recoveryOver: $("ph-recovery-over"), recoveryUnder: $("ph-recovery-under"),
+    preview: $("ph-preview"), run: $("ph-run"), pause: $("ph-pause"), stop: $("ph-stop"), msg: $("ph-msg"),
     mode: $("ph-mode"), digitNow: $("ph-digit-now"), digits: $("ph-digits"),
     entryTxt: $("ph-entry-txt"), entryBar: $("ph-entry-bar"),
     patLabel: $("ph-pat-label"), patTxt: $("ph-pat-txt"), patBar: $("ph-pat-bar"),
@@ -43,6 +44,7 @@
   let session = null;
   let lastCfg = null;
   let otherRunning = null;            // name of another bot that is running, if any
+  let selectedRecoverySide = "OVER";
 
   // ---------- helpers ----------
   const money = (x) => (x === null || x === undefined || isNaN(x) ? "—" : Number(x).toFixed(2));
@@ -235,9 +237,10 @@
   }
   function onMarketPicked(sel) {
     const symbol = sel.value;
-    if (!symbol || session) return;
+    if (!symbol || (session && !session.isPaused())) return;
     const meta = symbolMeta(symbol);
     if (typeof selectSymbol === "function") selectSymbol(symbol, meta ? meta.displayName : symbol);
+    if (session && meta && session.setMarket) session.setMarket(meta.symbol, decimalPlacesFor(meta.pipSize));
   }
   el.marketSelect.addEventListener("change", () => onMarketPicked(el.marketSelect));
   el.widgetMarket.addEventListener("change", () => onMarketPicked(el.widgetMarket));
@@ -266,6 +269,17 @@
   }
   [el.stake, el.mult, el.maxRec, el.maxStake, el.recovery].forEach((x) => { x.addEventListener("input", paintPreview); x.addEventListener("change", paintPreview); });
 
+  function chooseRecoverySide(side) {
+    selectedRecoverySide = side === "UNDER" ? "UNDER" : "OVER";
+    el.recoveryOver.classList.toggle("active", selectedRecoverySide === "OVER");
+    el.recoveryUnder.classList.toggle("active", selectedRecoverySide === "UNDER");
+    el.recoveryOver.setAttribute("aria-pressed", String(selectedRecoverySide === "OVER"));
+    el.recoveryUnder.setAttribute("aria-pressed", String(selectedRecoverySide === "UNDER"));
+    if (session && session.setRecoverySide) session.setRecoverySide(selectedRecoverySide);
+  }
+  el.recoveryOver.addEventListener("click", () => chooseRecoverySide("OVER"));
+  el.recoveryUnder.addEventListener("click", () => chooseRecoverySide("UNDER"));
+
   // ==========================================================
   // Settings -> config (validated before anything is traded)
   // ==========================================================
@@ -279,7 +293,7 @@
       stake: num(el.stake), duration: num(el.duration), nEntry: num(el.nDigits), tp: num(el.tp), sl: num(el.sl),
       recoveryEnabled: !!el.recovery.checked, immediate: !!el.immediate.checked, fastRecovery: !!el.fast.checked, hardStop: !!el.hardStop.checked,
       recPattern: num(el.pattern), recConfirm: num(el.confirm), recStrengthPattern: num(el.strengthPattern), recStrengthConfirm: num(el.strengthConfirm), mult: num(el.mult), maxRec: num(el.maxRec), recDuration: num(el.recDur),
-      maxStake: num(el.maxStake), afterLimit: el.afterLimit.value,
+      maxStake: num(el.maxStake), afterLimit: el.afterLimit.value, recoverySide: selectedRecoverySide,
     };
     let err = null;
     if (!(cfg.stake >= 0.35)) err = "Initial stake must be at least 0.35.";
@@ -342,14 +356,20 @@
     el.run.disabled = on || !!otherRunning;
     el.run.title = otherRunning && !on ? "The " + otherRunning + " bot is running. Stop it first." : "";
     el.stop.disabled = !on;
-    SETTINGS.forEach((x) => { x.disabled = on || ((x === el.marketSelect || x === el.widgetMarket) && !!otherRunning); });
-    el.marketSelect.title = el.widgetMarket.title = on ? "Stop the running bot to change market" : "";
+    el.pause.disabled = !on;
+    SETTINGS.forEach((x) => {
+      const marketControl = x === el.marketSelect || x === el.widgetMarket;
+      const recoveryChoice = x === el.recoveryOver || x === el.recoveryUnder;
+      x.disabled = on ? (!session || !session.isPaused() || (!marketControl && !recoveryChoice)) : (!!otherRunning && marketControl);
+    });
+    el.recoveryOver.disabled = el.recoveryUnder.disabled = on && (!session || !session.isPaused());
+    el.marketSelect.title = el.widgetMarket.title = on && (!session || !session.isPaused()) ? "Pause the bot to change market" : "";
   }
 
   // ==========================================================
   // Dashboard
   // ==========================================================
-  const MODE_TEXT = { waiting: "Waiting", entry: "Entry", recovery: "Recovery", stopped: "Stopped" };
+  const MODE_TEXT = { waiting: "Waiting", entry: "Entry", recovery: "Recovery", paused: "Paused", stopped: "Stopped" };
   function setBar(barEl, count, need, state) {
     barEl.className = "ph-bar" + (state ? " " + state : "");
     barEl.firstElementChild.style.width = need > 0 ? Math.round((count / need) * 100) + "%" : "0%";
@@ -422,7 +442,7 @@
 
   function resetDash(cfg) {
     el.histBody.innerHTML = ""; rowEls.clear(); el.histEmpty.classList.remove("hidden");
-    render({ mode: "waiting", reconnecting: false, entryCount: 0, entryNeed: cfg.nEntry, patCount: 0, patNeed: cfg.recPattern,
+    render({ mode: "stopped", reconnecting: false, entryCount: 0, entryNeed: cfg.nEntry, patCount: 0, patNeed: cfg.recPattern,
       recCount: 0, recNeed: cfg.recConfirm, recPhase: null, recContract: null, recTrades: 0, maxRec: cfg.maxRec,
       level: 0, stake: cfg.stake, nextRecStake: Math.round(cfg.stake * cfg.mult * 100) / 100,
       bought: 0, wins: 0, losses: 0, open: 0, profit: 0, estimated: false, tp: cfg.tp, sl: cfg.sl });
@@ -478,10 +498,19 @@
       log: log,
       state: render,
       trade: upsertRow,
-      finished: () => { session = null; announce(false); setRunningUI(false); },
+      finished: () => {
+        session = null; announce(false); setRunningUI(false); el.pause.textContent = "⏸ Pause";
+        if (lastCfg) resetDash(lastCfg);
+      },
     });
   });
 
+  el.pause.addEventListener("click", () => {
+    if (!session) return;
+    if (session.isPaused()) { session.resume(); el.pause.textContent = "⏸ Pause"; }
+    else { session.pause(); el.pause.textContent = "▶ Resume"; }
+    setRunningUI(true);
+  });
   el.stop.addEventListener("click", () => { if (session) session.stop(); });
 
   // Switching accounts rebuilds the session — never leave a bot running across that.
