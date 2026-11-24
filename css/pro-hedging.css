@@ -156,14 +156,11 @@ body.hedge-active footer {
   .ph-table td { padding: 0.3rem 0.2rem; }
 }
 
-/* ---------- Sniper Trader: keep the status / profit row at a constant height on phones ----------
-   Normally the status chip and the two stat boxes share one flexible row, so every time the chip text changes
-   ("Idle" -> "Waiting for pattern") or "last trade +0.80" appears, the boxes are re-squeezed and their text re-wraps:
-   the row grows and pushes the digit widget down while trades are placed. On phones the three items are stacked
-   in a fixed single column instead, so nothing can re-wrap and the widget stays where it is.
-   Scoped to the Sniper Trader tab only. */
-@media (max-width: 480px) {
-  #tab-sniper-trader .sniper-dash { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.5rem; }
-  #tab-sniper-trader .sniper-dash > .sniper-chip { justify-self: start; }
-  #tab-sniper-trader .sniper-dash > .sniper-tile { min-width: 0; }
-}
+/* Recovery contract selector and pause control (Pro Hedging only) */
+.ph-recovery-choice { display:flex; align-items:center; gap:0.45rem; flex-wrap:wrap; min-width:0; }
+.ph-recovery-choice-label { font-size:0.76rem; color:#6B7280; margin-right:0.2rem; }
+.ph-recovery-choice-btn { border:1px solid #D8DDE4; border-radius:8px; padding:0.48rem 0.85rem; background:#F7F8FA; color:#374151; font-family:inherit; font-size:0.78rem; font-weight:600; cursor:pointer; }
+.ph-recovery-choice-btn.active { border-color:var(--gold); background:rgba(212,169,74,0.16); color:#806015; box-shadow:inset 0 0 0 1px var(--gold); }
+.ph-recovery-choice-btn:disabled { opacity:0.55; cursor:not-allowed; }
+.btn-buy-yellow { background:#F4C430 !important; color:#302500 !important; border-color:#D9A900 !important; }
+.btn-buy-yellow:disabled { opacity:0.5; cursor:not-allowed; }
