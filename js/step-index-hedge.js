@@ -16,9 +16,9 @@
   };
   if (!el.scan || typeof derivAPI === 'undefined') return;
 
-  let active = false, scanning = false, selectedSymbol = null, selectedMeta = null;
+  let active = false, scanning = false, selectedSymbol = null, selectedMeta = null, latestLiveQuote = null;
   let generation = 0, results = new Map(), liveQuotes = [], paper = { pairs: 0, wins: 0, doubles: 0, flat: 0, returnToEntry: 0, last: [] };
-  const livePaper = { running:false, requesting:false, seq:0, previous:null, pending:[], settled:0, oneWins:0, doubles:0, net:0, last:[], skipped:0 };
+  const livePaper = { running:false, requesting:false, seq:0, previous:null, pending:[], settled:0, oneWins:0, doubles:0, net:0, last:[], skipped:0, quoteErrors:0 };
   const money = n => '$' + Number(n || 0).toFixed(2);
   const pct = (n, d) => d ? (100 * n / d) : 0;
   const decimalsFor = pip => { const s = String(pip ?? 0.001), i = s.indexOf('.'); return i < 0 ? 0 : s.length - i - 1; };
@@ -46,6 +46,7 @@
       window.selectSymbol(symbol, meta.displayName);
     }
     liveQuotes = [];
+    latestLiveQuote = null;
     resetLivePaper();
     paper = { pairs: 0, wins: 0, doubles: 0, flat: 0, returnToEntry: 0, last: [] };
     renderPaper();
@@ -320,13 +321,24 @@
   function activeCurrency() { const a = (window.AppState?.accounts || []).find(x => x.account_id === window.AppState?.activeAccountId); return a?.currency || 'USD'; }
 
   async function requestPairQuotes(meta, stake) {
-    const base = { amount: stake, basis: 'stake', currency: activeCurrency(), duration: 2, duration_unit: 't', symbol: meta.symbol };
+    // The app is connected to Deriv's current API schema. Proposal requests
+    // use underlying_symbol (not the legacy symbol property).
+    const base = { amount: stake, basis: 'stake', currency: activeCurrency(), duration: 2, duration_unit: 't', underlying_symbol: meta.symbol };
     const [riseRes, fallRes] = await Promise.all([
       derivAPI.send({ proposal: 1, ...base, contract_type: 'CALL' }),
       derivAPI.send({ proposal: 1, ...base, contract_type: 'PUT' })
     ]);
-    if (riseRes.error || fallRes.error || !riseRes.proposal || !fallRes.proposal) throw new Error(riseRes.error?.message || fallRes.error?.message || 'One or both proposals unavailable');
-    return { ready: true, rise: { ask: Number(riseRes.proposal.ask_price), payout: Number(riseRes.proposal.payout), id: riseRes.proposal.id }, fall: { ask: Number(fallRes.proposal.ask_price), payout: Number(fallRes.proposal.payout), id: fallRes.proposal.id }, currency: activeCurrency(), capturedAt: Date.now() };
+    if (riseRes.error || fallRes.error || !riseRes.proposal || !fallRes.proposal) {
+      const err = riseRes.error || fallRes.error;
+      throw new Error(err?.message || 'One or both Rise/Fall proposals were unavailable.');
+    }
+    const rp = riseRes.proposal, fp = fallRes.proposal;
+    return {
+      ready: true,
+      rise: { ask: Number(rp.ask_price), payout: Number(rp.payout), id: rp.id, spot: Number(rp.spot), spotTime: Number(rp.spot_time) },
+      fall: { ask: Number(fp.ask_price), payout: Number(fp.payout), id: fp.id, spot: Number(fp.spot), spotTime: Number(fp.spot_time) },
+      currency: activeCurrency(), capturedAt: Date.now()
+    };
   }
 
   async function refreshAllQuotes() {
@@ -351,10 +363,10 @@
     el.liveStats.innerHTML = [
       ['Paired entries settled', n], ['One-contract wins', livePaper.oneWins], ['Double losses', livePaper.doubles],
       ['Net paper P/L', `<span class="${livePaper.net >= 0 ? 'positive' : 'negative'}">${money(livePaper.net)}</span>`],
-      ['Double-loss rate', n ? pct(livePaper.doubles,n).toFixed(2)+'%' : '—'], ['Pending pairs', livePaper.pending.length]
+      ['Double-loss rate', n ? pct(livePaper.doubles,n).toFixed(2)+'%' : '—'], ['Pending pairs', livePaper.pending.length], ['Skipped stale quotes', livePaper.skipped], ['Proposal errors', livePaper.quoteErrors]
     ].map(([k,v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('');
     el.liveLog.innerHTML = livePaper.last.length ? livePaper.last.slice().reverse().map(t =>
-      `<div class="sih-log-row"><span>${new Date(t.time).toLocaleTimeString()}</span><b class="${t.net >= 0 ? 'positive' : 'negative'}">${t.result} · ${money(t.net)}</b><span>${t.entry.toFixed(decimalsFor(selectedMeta?.pipSize))} → ${t.expiry.toFixed(decimalsFor(selectedMeta?.pipSize))}</span></div>`
+      `<div class="sih-log-row"><span>${new Date(t.time).toLocaleTimeString()}</span><b class="${t.net >= 0 ? 'positive' : 'negative'}">${t.result} · ${money(t.net)}</b><span>Rise ${t.riseEntry.toFixed(decimalsFor(selectedMeta?.pipSize))} / Fall ${t.fallEntry.toFixed(decimalsFor(selectedMeta?.pipSize))} → ${t.expiry.toFixed(decimalsFor(selectedMeta?.pipSize))}</span></div>`
     ).join('') : 'No paper entries yet.';
     el.liveStart.disabled = livePaper.running;
     el.liveStop.disabled = !livePaper.running;
@@ -363,7 +375,7 @@
   function resetLivePaper() {
     livePaper.running = false; livePaper.requesting = false; livePaper.seq = 0; livePaper.previous = null;
     livePaper.pending = []; livePaper.settled = 0; livePaper.oneWins = 0; livePaper.doubles = 0;
-    livePaper.net = 0; livePaper.last = []; livePaper.skipped = 0;
+    livePaper.net = 0; livePaper.last = []; livePaper.skipped = 0; livePaper.quoteErrors = 0;
     if (el.liveStatus) el.liveStatus.textContent = 'Stopped · choose a Step Index and start paper trading.';
     if (el.liveStart) renderLivePaper();
   }
@@ -373,9 +385,19 @@
     if (!derivAPI.ws || derivAPI.ws.readyState !== WebSocket.OPEN) { el.liveStatus.textContent = 'Connect to Deriv before starting paper trading.'; return; }
     const stake = Number(el.liveStake.value);
     if (!Number.isFinite(stake) || stake < 0.35) { el.liveStatus.textContent = 'Enter a valid stake of at least $0.35 per contract.'; return; }
+    if (el.liveStrategy.value === 'auto' && !['UP','DOWN'].includes(results.get(selectedSymbol)?.delayed?.chosenSignal)) {
+      el.liveStatus.textContent = 'Automatic mode needs a completed historical analysis with a qualifying UP or DOWN training signal.'; return;
+    }
     resetLivePaper(); livePaper.running = true;
-    el.liveStatus.textContent = `Running paper-only simulation on ${selectedMeta.displayName}. Waiting for live ticks.`;
+    el.liveStatus.textContent = `Paper trading started on ${selectedMeta.displayName}. Requesting the first live quote pair…`;
     renderLivePaper();
+    // Give the user immediate feedback and obtain the first pair without
+    // waiting for another tick event. Subsequent entries remain tick-driven.
+    if (el.liveStrategy.value === 'simultaneous' && Number.isFinite(latestLiveQuote)) {
+      requestPaperPair(latestLiveQuote, livePaper.seq);
+    } else {
+      el.liveStatus.textContent = `Paper trading started on ${selectedMeta.displayName}. Waiting for the next qualifying live tick.`;
+    }
   }
 
   function selectedPaperSignal() {
@@ -395,19 +417,35 @@
     const symbol = selectedSymbol, meta = selectedMeta, stake = Number(el.liveStake.value);
     try {
       const q = await requestPairQuotes(meta, stake);
-      // Do not backdate a paper fill if the underlying has ticked while proposals were in flight.
-      if (!livePaper.running || symbol !== selectedSymbol || entrySeq !== livePaper.seq) {
+      // Proposal responses carry their own spot and spot_time. Do not reject
+      // merely because another tick arrived while the concurrent requests
+      // were in flight; that made paper entries virtually impossible on fast
+      // Step Indices. Still discard responses after stop/market change.
+      if (!livePaper.running || symbol !== selectedSymbol) {
         livePaper.skipped++;
-        el.liveStatus.textContent = `Skipped ${livePaper.skipped} stale quote pair(s); waiting for a fresh quote snapshot.`;
+        el.liveStatus.textContent = `Discarded ${livePaper.skipped} quote pair(s) after the session or market changed.`;
         return;
       }
       const riseAsk = Number(q.rise.ask), fallAsk = Number(q.fall.ask), risePayout = Number(q.rise.payout), fallPayout = Number(q.fall.payout);
       if (![riseAsk,fallAsk,risePayout,fallPayout].every(Number.isFinite) || riseAsk <= 0 || fallAsk <= 0) throw new Error('Deriv returned an invalid proposal price or payout.');
-      livePaper.pending.push({ symbol, entry:entryQuote, entrySeq, expiresAt:entrySeq+2, riseAsk, fallAsk, risePayout, fallPayout, currency:q.currency, quoteTime:q.capturedAt, sourceSpotRise:q.rise.spot ?? null, sourceSpotFall:q.fall.spot ?? null });
-      el.liveStatus.textContent = `Paper pair quoted · Rise ask ${money(riseAsk)}, payout ${money(risePayout)} · Fall ask ${money(fallAsk)}, payout ${money(fallPayout)}.`;
+      const riseEntry = Number.isFinite(q.rise.spot) && q.rise.spot > 0 ? q.rise.spot : entryQuote;
+      const fallEntry = Number.isFinite(q.fall.spot) && q.fall.spot > 0 ? q.fall.spot : entryQuote;
+      // Both proposals are requested concurrently. Use the proposal spot
+      // timestamps to detect a materially mismatched pair; a pair whose
+      // quotes are more than 2 seconds apart is not a credible simultaneous
+      // paper entry and is skipped.
+      if (Number.isFinite(q.rise.spotTime) && Number.isFinite(q.fall.spotTime) && Math.abs(q.rise.spotTime - q.fall.spotTime) > 2) {
+        livePaper.skipped++;
+        el.liveStatus.textContent = `Skipped ${livePaper.skipped} mismatched quote pair(s): Rise and Fall proposal spots were not contemporaneous.`;
+        return;
+      }
+      livePaper.pending.push({ symbol, riseEntry, fallEntry, entrySeq:livePaper.seq, expiresAt:livePaper.seq+2, riseAsk, fallAsk, risePayout, fallPayout, currency:q.currency, quoteTime:q.capturedAt, riseSpotTime:q.rise.spotTime, fallSpotTime:q.fall.spotTime });
+      el.liveStatus.textContent = `Paper pair quoted · Rise entry ${riseEntry} / Fall entry ${fallEntry} · Rise payout ${money(risePayout)} · Fall payout ${money(fallPayout)}.`;
       renderLivePaper();
     } catch (err) {
-      el.liveStatus.textContent = `Paper quote error: ${err.message}`;
+      livePaper.quoteErrors++;
+      el.liveStatus.textContent = `Paper quote error (${livePaper.quoteErrors}): ${err.message}`;
+      renderLivePaper();
     } finally { livePaper.requesting = false; }
   }
 
@@ -415,14 +453,15 @@
     const stillPending = [];
     for (const pair of livePaper.pending) {
       if (pair.symbol !== selectedSymbol || livePaper.seq < pair.expiresAt) { stillPending.push(pair); continue; }
-      const riseWin = expiryQuote > pair.entry, fallWin = expiryQuote < pair.entry;
+      const riseWin = expiryQuote > pair.riseEntry, fallWin = expiryQuote < pair.fallEntry;
       const riseNet = riseWin ? pair.risePayout - pair.riseAsk : -pair.riseAsk;
       const fallNet = fallWin ? pair.fallPayout - pair.fallAsk : -pair.fallAsk;
       const net = riseNet + fallNet;
       const doubleLoss = !riseWin && !fallWin;
       livePaper.settled++; if (doubleLoss) livePaper.doubles++; else livePaper.oneWins++;
       livePaper.net += net;
-      livePaper.last.push({ time:Date.now(), entry:pair.entry, expiry:expiryQuote, net, result:doubleLoss ? 'DOUBLE LOSS' : riseWin ? 'RISE WINS' : 'FALL WINS', riseAsk:pair.riseAsk, fallAsk:pair.fallAsk, risePayout:pair.risePayout, fallPayout:pair.fallPayout });
+      const result = doubleLoss ? 'DOUBLE LOSS' : riseWin && fallWin ? 'BOTH WIN' : riseWin ? 'RISE WINS' : 'FALL WINS';
+      livePaper.last.push({ time:Date.now(), riseEntry:pair.riseEntry, fallEntry:pair.fallEntry, expiry:expiryQuote, net, result, riseAsk:pair.riseAsk, fallAsk:pair.fallAsk, risePayout:pair.risePayout, fallPayout:pair.fallPayout });
       if (livePaper.last.length > 30) livePaper.last.shift();
     }
     livePaper.pending = stillPending;
@@ -457,6 +496,7 @@
   function onTick(event) {
     if (!selectedSymbol || event.detail?.symbol !== selectedSymbol) return;
     const quote = Number(event.detail.quote); if (!Number.isFinite(quote)) return;
+    latestLiveQuote = quote;
     // Keep a started paper session synchronized even when the user temporarily visits another tab.
     if (livePaper.running || livePaper.pending.length) onLivePaperTick(quote);
     if (!active) return;
@@ -491,14 +531,14 @@
   renderLivePaper();
   document.addEventListener('algotrade:tick', onTick);
   document.addEventListener('algotrade:account-ready', populateMarkets);
-  document.addEventListener('algotrade:reconnected', () => { if (active) { liveQuotes = []; livePaper.running = false; livePaper.pending = []; el.liveStatus.textContent = 'Connection restored. Restart paper trading to begin a fresh quote session.'; renderLivePaper(); el.paperStatus.textContent = 'Reconnected · waiting for ticks'; } });
+  document.addEventListener('algotrade:reconnected', () => { if (active) { liveQuotes = []; latestLiveQuote = null; livePaper.running = false; livePaper.pending = []; el.liveStatus.textContent = 'Connection restored. Restart paper trading to begin a fresh quote session.'; renderLivePaper(); el.paperStatus.textContent = 'Reconnected · waiting for ticks'; } });
   document.addEventListener('algotrade:symbol-selected', e => {
     if (!active || !e.detail?.symbol) return;
     // Keep the module's market selection authoritative only when that symbol is a Step Index.
     if (stepMarkets().some(s => s.symbol === e.detail.symbol) && e.detail.symbol !== selectedSymbol) {
       selectedSymbol = e.detail.symbol; selectedMeta = stepMarkets().find(s => s.symbol === selectedSymbol);
       resetLivePaper();
-      el.market.value = selectedSymbol; liveQuotes = []; paper = { pairs:0,wins:0,doubles:0,flat:0,returnToEntry:0,last:[] }; renderPaper();
+      el.market.value = selectedSymbol; liveQuotes = []; latestLiveQuote = null; paper = { pairs:0,wins:0,doubles:0,flat:0,returnToEntry:0,last:[] }; renderPaper();
       if (results.has(selectedSymbol)) renderSelected(results.get(selectedSymbol));
     }
   });
