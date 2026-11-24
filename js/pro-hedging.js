@@ -508,9 +508,8 @@
       trade: upsertRow,
       finished: () => {
         session = null; announce(false); setRunningUI(false); el.pause.textContent = "⏸ Pause";
-        // Reset live dashboard figures, but retain the completed session's trade rows
-        // so the trader can review them until the next Run click.
-        if (lastCfg) resetDash(lastCfg);
+        // Keep the final session dashboard figures and trade rows visible while stopped.
+        // They are cleared together only when the trader explicitly clicks Run again.
       },
     });
   });
