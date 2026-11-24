@@ -44,3 +44,9 @@
 .sih-wf-block p{font-size:.7rem;color:#7a8493;margin:0;line-height:1.45}
 .sih-wf-block .sih-delayed-table{min-width:760px}
 @media(max-width:650px){.sih-wf-block .sih-delayed-table{min-width:760px}}
+
+/* Phase 8 — live-quote paper execution (responsive, no real purchases) */
+.sih-phase8-card{min-width:0}.sih-phase8-controls{display:grid;grid-template-columns:minmax(220px,1fr) minmax(150px,.55fr) auto;gap:12px;align-items:end}.sih-phase8-controls label{display:flex;flex-direction:column;gap:6px;min-width:0;font-size:.72rem;font-weight:700;color:#657184}.sih-phase8-controls input,.sih-phase8-controls select{width:100%;min-width:0;min-height:39px;padding:8px 10px;border:1px solid #dce2ea;border-radius:8px;background:#fff;color:#202631;font:inherit}.sih-phase8-actions{display:flex;gap:8px}.sih-phase8-actions button{white-space:nowrap}.sih-live-status{margin:12px 0;padding:10px 12px;border-radius:8px;background:#f1f6fc;color:#42536a;font-size:.72rem;line-height:1.5;overflow-wrap:anywhere}.sih-live-stats{grid-template-columns:repeat(3,minmax(0,1fr))}.sih-live-stats b{overflow-wrap:anywhere}.sih-live-stats .positive,.sih-live-stats .negative{display:inline-block}
+@media(max-width:850px){.sih-phase8-controls{grid-template-columns:repeat(2,minmax(0,1fr))}.sih-phase8-actions{grid-column:1/-1;justify-content:flex-start}}
+@media(max-width:560px){.sih-phase8-controls{grid-template-columns:1fr}.sih-phase8-actions{display:grid;grid-template-columns:1fr 1fr}.sih-live-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.sih-phase8-actions button{white-space:normal}}
+@media(max-width:360px){.sih-phase8-actions,.sih-live-stats{grid-template-columns:1fr}}
