@@ -97,7 +97,7 @@
       overallRise:0, overallFall:0, overallZero:0,
       train:{total:0, up:{n:0,rise:0,fall:0,zero:0}, down:{n:0,rise:0,fall:0,zero:0}},
       test:{total:0, up:{n:0,rise:0,fall:0,zero:0}, down:{n:0,rise:0,fall:0,zero:0}},
-      chosenSignal:'insufficient', chosenTest:null
+      chosenSignal:'insufficient', chosenTest:null, walkForward:[], walkForwardAggregate:{n:0,rise:0,fall:0,zero:0,folds:0}
     };
     const stride = method === 'nonoverlap' ? 4 : 1;
     const splitAt = Math.floor(prices.length * 0.8);
@@ -126,6 +126,45 @@
     out.chosenSignal = Math.min(upRate,downRate) === Infinity ? 'insufficient (<30 train observations)' : (upRate <= downRate ? 'UP' : 'DOWN');
     const chosen = out.chosenSignal === 'UP' ? out.test.up : out.chosenSignal === 'DOWN' ? out.test.down : null;
     out.chosenTest = chosen ? {...chosen, zeroRate: chosen.n ? chosen.zero/chosen.n : null} : null;
+
+    // Phase 7 expanding-window walk-forward validation. Each test block is
+    // chronologically later than its training prefix; test blocks do not overlap.
+    // In non-overlap mode, the source windows themselves also share no quotes.
+    const windows = [];
+    for (let i=0; i+3<prices.length; i+=stride) {
+      const p0=toUnits(prices[i],decimals), p1=toUnits(prices[i+1],decimals), p3=toUnits(prices[i+3],decimals);
+      windows.push({ index:i, signal:Math.sign(p1-p0), outcome:Math.sign(p3-p1) });
+    }
+    const foldSpecs = [0.50,0.60,0.70,0.80,0.90];
+    const countSide = (arr, side) => {
+      const selected = arr.filter(w => w.signal === side);
+      return { n:selected.length, rise:selected.filter(w=>w.outcome>0).length, fall:selected.filter(w=>w.outcome<0).length, zero:selected.filter(w=>w.outcome===0).length };
+    };
+    for (let f=0; f<foldSpecs.length; f++) {
+      const trainEnd = Math.floor(windows.length * foldSpecs[f]);
+      const testEnd = Math.floor(windows.length * (foldSpecs[f] + 0.10));
+      const testStartIndex = windows[trainEnd]?.index ?? Infinity;
+      const testEndIndex = windows[testEnd]?.index ?? Infinity;
+      const trainCutoffIndex = method === 'overlap' ? testStartIndex - 3 : testStartIndex;
+      // Purge any overlapping training windows whose expiry reaches into the test block.
+      const trainWindows = windows.filter((w,idx) => idx < trainEnd && w.index + 3 < trainCutoffIndex + 3);
+      const testWindows = windows.slice(trainEnd,testEnd).filter(w => w.index < testEndIndex);
+      const upTrain = countSide(trainWindows,1), downTrain = countSide(trainWindows,-1);
+      const upRateFold = upTrain.n >= 30 ? upTrain.zero/upTrain.n : Infinity;
+      const downRateFold = downTrain.n >= 30 ? downTrain.zero/downTrain.n : Infinity;
+      const signal = Math.min(upRateFold,downRateFold) === Infinity ? 'INSUFFICIENT' : (upRateFold <= downRateFold ? 'UP' : 'DOWN');
+      const testSide = signal === 'UP' ? countSide(testWindows,1) : signal === 'DOWN' ? countSide(testWindows,-1) : {n:0,rise:0,fall:0,zero:0};
+      const fold = { round:f+1, trainWindows:trainWindows.length, testWindows:testWindows.length, signal, trainUp:upTrain, trainDown:downTrain, test:testSide, zeroRate:testSide.n ? testSide.zero/testSide.n : null };
+      out.walkForward.push(fold);
+      if (signal !== 'INSUFFICIENT' && testSide.n) {
+        out.walkForwardAggregate.n += testSide.n;
+        out.walkForwardAggregate.rise += testSide.rise;
+        out.walkForwardAggregate.fall += testSide.fall;
+        out.walkForwardAggregate.zero += testSide.zero;
+        out.walkForwardAggregate.folds++;
+      }
+    }
+    out.walkForwardAggregate.zeroRate = out.walkForwardAggregate.n ? out.walkForwardAggregate.zero/out.walkForwardAggregate.n : null;
     return out;
   }
 
@@ -254,11 +293,22 @@
       const selectedTest = d.chosenTest;
       const stakeNow = Math.max(0, Number(el.stake.value)||0);
       const assumed = Math.max(0, Number(el.minPayout.value)||0);
-      const testEV = selectedTest && selectedTest.n ? ((selectedTest.rise/selectedTest.n)*(assumed-2*stakeNow) + (selectedTest.fall/selectedTest.n)*(assumed-2*stakeNow) - (selectedTest.zero/selectedTest.n)*(2*stakeNow)) : NaN;
+      const risePayoutForEV = r.quotes?.ready ? r.quotes.rise.payout : assumed;
+      const fallPayoutForEV = r.quotes?.ready ? r.quotes.fall.payout : assumed;
+      const totalStakeForEV = 2*stakeNow;
+      const testEV = selectedTest && selectedTest.n ? ((selectedTest.rise/selectedTest.n)*(risePayoutForEV-totalStakeForEV) + (selectedTest.fall/selectedTest.n)*(fallPayoutForEV-totalStakeForEV) - (selectedTest.zero/selectedTest.n)*totalStakeForEV) : NaN;
       el.validation.innerHTML = `<div class="sih-validation-head"><div><h3>Phase 6 · Conditional strategy validation</h3><p>Earliest 80% selects the signal; newest 20% is held out and not used to choose it.</p></div><span class="sih-badge">Out-of-sample test</span></div>
         <div class="sih-validation-table-wrap"><table class="sih-delayed-table"><thead><tr><th>Entry condition</th><th>Train n</th><th>Train zero</th><th>Test n</th><th>Test zero</th><th>Test Rise</th><th>Test Fall</th></tr></thead><tbody>${sideRows.map(([label,a,b])=>`<tr><td>${label}</td><td>${a.n||0}</td><td>${a.n?fmt(a.zero/a.n):'—'} <small>(${a.zero||0})</small></td><td>${b.n||0}</td><td>${b.n?fmt(b.zero/b.n):'—'} <small>(${b.zero||0})</small></td><td>${b.n?fmt(b.rise/b.n):'—'} <small>(${b.rise||0})</small></td><td>${b.n?fmt(b.fall/b.n):'—'} <small>(${b.fall||0})</small></td></tr>`).join('')}</tbody></table></div>
-        <div class="sih-validation-result"><div><span>Signal selected using training data</span><b>${d.chosenSignal}</b><small>${selectedTrain ? `${selectedTrain.n} training observations · ${fmt(selectedTrain.n?selectedTrain.zero/selectedTrain.n:NaN)} zero-net` : 'Insufficient directional observations'}</small></div><div><span>Held-out observations for selected signal</span><b>${selectedTest?.n || 0}</b><small>${selectedTest ? `${selectedTest.zero} double-loss cases · ${fmt(selectedTest.zeroRate)}` : 'No holdout sample'}</small></div><div><span>Illustrative held-out net / pair</span><b class="${Number.isFinite(testEV)&&testEV>=0?'positive':'negative'}">${Number.isFinite(testEV)?money(testEV):'—'}</b><small>Assumed payout ${money(assumed)} per winning contract; not a live quote.</small></div></div>
+        <div class="sih-validation-result"><div><span>Signal selected using training data</span><b>${d.chosenSignal}</b><small>${selectedTrain ? `${selectedTrain.n} training observations · ${fmt(selectedTrain.n?selectedTrain.zero/selectedTrain.n:NaN)} zero-net` : 'Insufficient directional observations'}</small></div><div><span>Held-out observations for selected signal</span><b>${selectedTest?.n || 0}</b><small>${selectedTest ? `${selectedTest.zero} double-loss cases · ${fmt(selectedTest.zeroRate)}` : 'No holdout sample'}</small></div><div><span>Illustrative held-out net / pair</span><b class="${Number.isFinite(testEV)&&testEV>=0?'positive':'negative'}">${Number.isFinite(testEV)?money(testEV):'—'}</b><small>${r.quotes?.ready ? 'Current quoted payouts' : 'Assumed payout '+money(assumed)}; quotes can change before execution.</small></div></div>
         <p class="sih-calc-caption">Holdout windows are chronologically later than training windows. Flat first signals are excluded from UP/DOWN strategy rows. The test sample is a single historical holdout, not proof of future performance; overlapping mode also contains dependent observations.</p>`;
+      const wf = d.walkForward || [];
+      const agg = d.walkForwardAggregate || {n:0,rise:0,fall:0,zero:0,folds:0};
+      const wfEV = agg.n ? ((agg.rise/agg.n)*(risePayoutForEV-totalStakeForEV) + (agg.fall/agg.n)*(fallPayoutForEV-totalStakeForEV) - (agg.zero/agg.n)*totalStakeForEV) : NaN;
+      const wfRows = wf.map(f => `<tr><td>${f.round}</td><td>${f.trainWindows}</td><td>${f.testWindows}</td><td>${f.signal}</td><td>${f.test.n}</td><td>${f.test.n?fmt(f.zeroRate):'—'}</td><td>${f.test.zero}/${f.test.n}</td></tr>`).join('');
+      el.validation.innerHTML += `<div class="sih-wf-block"><div class="sih-validation-head"><div><h3>Phase 7 · Expanding walk-forward validation</h3><p>Each round selects UP or DOWN using only earlier observations, then evaluates that choice on the next chronological block. Test blocks are disjoint.</p></div><span class="sih-badge">5 sequential rounds</span></div>
+        <div class="sih-validation-table-wrap"><table class="sih-delayed-table"><thead><tr><th>Round</th><th>Training windows</th><th>Test windows</th><th>Selected signal</th><th>Selected test n</th><th>Test zero-net</th><th>Double losses / n</th></tr></thead><tbody>${wfRows || '<tr><td colspan="7">Insufficient history for walk-forward testing.</td></tr>'}</tbody></table></div>
+        <div class="sih-validation-result"><div><span>Qualifying walk-forward rounds</span><b>${agg.folds || 0} / 5</b><small>Rounds with at least 30 training examples per eligible signal and selected test observations.</small></div><div><span>Aggregated selected-signal test</span><b>${agg.n || 0} observations · ${fmt(agg.zeroRate)}</b><small>${agg.zero || 0} double-loss cases across disjoint test blocks.</small></div><div><span>Illustrative walk-forward net / pair</span><b class="${Number.isFinite(wfEV)&&wfEV>=0?'positive':'negative'}">${Number.isFinite(wfEV)?money(wfEV):'—'}</b><small>${r.quotes?.ready ? 'Current quoted payouts' : 'Assumed payout '+money(assumed)}; quotes can change before execution.</small></div></div>
+        <p class="sih-calc-caption">The expanding training windows begin at 50% of available observations and advance in 10-point increments; each round tests the next 10%. In overlapping mode, adjacent observations still share ticks. Even non-overlapping historical windows do not guarantee future performance. This is a historical walk-forward diagnostic, not proof of a tradable edge.</p></div>`;
     }
 
     renderRanking();
@@ -269,8 +319,8 @@
   async function requestPairQuotes(meta, stake) {
     const base = { amount: stake, basis: 'stake', currency: activeCurrency(), duration: 2, duration_unit: 't', symbol: meta.symbol };
     const [riseRes, fallRes] = await Promise.all([
-      derivAPI.send({ proposal: 1, ...base, contract_type: 'PUT' }),
-      derivAPI.send({ proposal: 1, ...base, contract_type: 'CALL' })
+      derivAPI.send({ proposal: 1, ...base, contract_type: 'CALL' }),
+      derivAPI.send({ proposal: 1, ...base, contract_type: 'PUT' })
     ]);
     if (riseRes.error || fallRes.error || !riseRes.proposal || !fallRes.proposal) throw new Error(riseRes.error?.message || fallRes.error?.message || 'One or both proposals unavailable');
     return { ready: true, rise: { ask: Number(riseRes.proposal.ask_price), payout: Number(riseRes.proposal.payout), id: riseRes.proposal.id }, fall: { ask: Number(fallRes.proposal.ask_price), payout: Number(fallRes.proposal.payout), id: fallRes.proposal.id }, currency: activeCurrency(), capturedAt: Date.now() };
